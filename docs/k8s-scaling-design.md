@@ -43,6 +43,14 @@ PV `reclaimPolicy: Retain`（PVC 误删后磁盘数据保留可重绑）；State
 接管，单副本仅限 PoC 且明示风险）。最后防线：包内置定时备份（PG WAL 归档 +
 Neo4j dump → 客户 NFS/MinIO），**交付验收含真实恢复演练**。
 
+**跨物理机镜像路线（spec-4.5 必含）**：数据库一律走**应用层复制**——
+PG 用 CloudNativePG 主备实例经 podAntiAffinity 落不同物理机、各用本地 PV、
+WAL 流复制同步（秒级 failover，保数据也保服务）；MinIO 分布式 EC ≥4 节点；
+Neo4j Community 无复制（dump+重放兜底），硬 RPO 需求升 Enterprise 或换 FalkorDB。
+存储层复制（Longhorn/Ceph/客户 SAN）仅用于通用杂项卷或客户既有设施。
+**反模式禁令：禁止分布式存储卷上再叠数据库复制**（4-6 份数据+双重写放大）；
+storage class 分开命名（local-db / replicated-general）按卷类型对号入座。
+
 ## 2. 关键机制
 
 ### 2.1 为什么 agent-runtime 能横向伸缩
