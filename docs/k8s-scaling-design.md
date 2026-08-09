@@ -33,6 +33,16 @@ Helm 存储子 chart 以 `storage.builtin` 开关）：
 生产不进 k8s 的理由：小团队把主备/备份/监控外包给云厂商是决定性减负；
 计算与存储故障域分离（k8s 集群升级/重建不牵连数据）；数据库 IO 绕开 CSI 层损耗。
 
+### 1.2 私有化 in-k8s 存储的数据保护（spec-4.5 必含，Helm 默认值而非可选项）
+
+数据在 PV 不在容器——删 pod 不丢数据是 PV 机制的基本保证。在此之上分层设防：
+StatefulSet 固定身份重绑 PVC；`pvc-protection` finalizer（使用中 PVC 删不掉）；
+PV `reclaimPolicy: Retain`（PVC 误删后磁盘数据保留可重绑）；StatefulSet
+`persistentVolumeClaimRetentionPolicy: Retain`；RBAC 收敛（删 PVC/PV/数据库 CR
+仅平台管理员角色）；PG 双副本跨节点反亲和（本地盘 storage class 下节点丢失由备库
+接管，单副本仅限 PoC 且明示风险）。最后防线：包内置定时备份（PG WAL 归档 +
+Neo4j dump → 客户 NFS/MinIO），**交付验收含真实恢复演练**。
+
 ## 2. 关键机制
 
 ### 2.1 为什么 agent-runtime 能横向伸缩
