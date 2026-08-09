@@ -103,6 +103,11 @@ P1/P2 obvious fix，直接按推荐或既有惯例实现，在进度报告/commi
 
 ## 规则 8：代码与协作红线（摘要）
 
+> 本节故意只保留高危摘要，避免 CLAUDE.md 每次会话加载过重；完整代码规范在
+> `docs/development-standards.md`。**强制门槛**：任何代码编辑 / code review /
+> commit 前，必须先读取（或本会话内已读）`docs/development-standards.md`；
+> 即使未打开引用，本节红线也必须执行——引用文档只补细节，不削弱本节。
+
 - **Git**：commit 格式 `<type>: <description>`（feat/fix/refactor/docs/test/chore/perf/ci）；
   禁止 force push main；禁止把未 review 的大杂烩一次性 commit；
 - **依赖（分层管控，2026-08-09 user 定）**：
