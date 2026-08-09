@@ -97,7 +97,11 @@ P1/P2 obvious fix，直接按推荐或既有惯例实现，在进度报告/commi
 
 - **Git**：commit 格式 `<type>: <description>`（feat/fix/refactor/docs/test/chore/perf/ci）；
   禁止 force push main；禁止把未 review 的大杂烩一次性 commit；
-- **依赖**：新增任何第三方依赖（Go module / PyPI / npm）属规则 5 硬门槛，需说明选型理由；
+- **依赖（分层管控，2026-08-09 user 定）**：
+  - 后端直接依赖（Go module / PyPI）：事前审批（规则 5 硬门槛）+ 选型理由——量少且在核心路径，维持严格；
+  - 前端直接依赖（npm dependencies）：**备案制**——PR 描述中列出新增依赖 + 一句话理由，review 时核查，无需事前等待批复；
+  - 传递依赖：不做人工审批——lockfile 锁版本 + CI 安全扫描（audit 类工具），出 CVE 才升级人工处理；
+  - devDependencies（构建期、不进产物）：豁免备案，仅受 CI 扫描覆盖；
 - **多语言 lint**：Go=golangci-lint、Python=ruff+mypy、TS=eslint+prettier，配置以 spec-0.2 为准；
 - **代码风格**：遵循全局 coding-style.md（不可变数据、小函数 <50 行、文件 <800 行、按领域组织）；
 - **可观测性**：新增服务必须接入 spec-0.9 三件套（日志/metrics/tracing）后才算完成；
