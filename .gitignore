@@ -1,0 +1,21 @@
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# secrets（任何环境配置实值不入库）
+.env
+.env.*
+*.pem
+*.key
+!*.pub.key
+
+# 构建产物（spec-0.1 落地时按三语言扩展）
+dist/
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+bin/
+coverage*
