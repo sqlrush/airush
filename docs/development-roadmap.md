@@ -6,11 +6,21 @@
 
 ## 0. 概述
 
-### 0.1 当前状态（2026-08-08）
+### 0.1 当前状态（2026-08-09）
 
-- 总体设计已 user approve（见设计文档修订历史）；
+- 总体设计已 user approve，含 AD-11（Agent 核心 = codexgo 抽核）、AD-12（skill 协议 = MCP）；
+- 专项设计已完成：agent 抽核、存储选型、skill 运行时、k8s 伸缩、解耦架构、开发规范、
+  UI 纲要（见 docs/ 各文档）；codexgo 上游同步采用策略 C（见 codexgo-sync-assessment.md）；
 - 仓库已建立（github.com/sqlrush/airush，私有）；
 - 尚未编写任何产品代码——**Stage 0 第一个 spec approve 前不开始编码**。
+
+### 0.4 编码前置门槛（user 定，2026-08-08）
+
+1. **codexgo 定向同步（前置专项 P1）**：P0 功能簇（MCP 2026-07-28、线程模型、
+   multiagent v2、token 预算）在 codexgo 仓完成，是 spec-1.8/1.9 的硬前置；
+   与 airush Stage 0 可并行；
+2. **UI 设计（前置专项 P2）**：高保真 mockup 评审定稿 + UI 设计规范沉淀，
+   是 spec-1.13/1.14 的硬前置（见 ui-design-brief.md §5）；与 Stage 0/1 后端可并行。
 
 ### 0.2 工程规模评估（实事求是）
 
@@ -90,8 +100,8 @@ Stage 0 → Stage 1 → Stage 2 → Stage 3 → Stage 4
 | spec-1.5 | 数据接入层与时序存储 | 接入网关落库 TimescaleDB，数据模型定版 |
 | spec-1.6 | 客户侧脱敏规则引擎 | Connector 内置脱敏，规则可配置 |
 | spec-1.7 | LLM 网关 | LiteLLM 集成、模型路由、按租户配额与用量统计 |
-| spec-1.8 | Agent Runtime 骨架 | 无状态池、会话管理（PG）、上下文管理（Redis） |
-| spec-1.9 | Skill 框架 | 注册表、输入/输出 schema 约定、gRPC 调用协议 |
+| spec-1.8 | Agent Runtime 骨架（codexgo 抽核服务化） | 核心包 vendor、threadstore→PG、租户上下文、会话调度器（见 agent-core-design.md） |
+| spec-1.9 | Skill 框架（MCP） | 注册表、MCP streamable HTTP 调用面、幂等与背压（见 skill-runtime-design.md） |
 | spec-1.10 | skill：巡检报告 | 基于采集数据生成实例健康巡检报告 |
 | spec-1.11 | skill：慢查询分析 | 慢日志聚类、执行计划解读、优化建议 |
 | spec-1.12 | skill：健康诊断对话 | 交互式诊断，组合调用采集数据与其他 skill |
