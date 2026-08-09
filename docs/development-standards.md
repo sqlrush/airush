@@ -4,9 +4,22 @@
 > 层级：全局规则（~/.claude/rules/common/*.md）< 本文 < CLAUDE.md 研发纪律。
 > 本文管"代码怎么写"，CLAUDE.md 管"流程怎么走"。
 
+## 0. 适用范围与豁免（2026-08-09 user 定）
+
+本规范适用于所有自研代码。两类代码**豁免风格类条款**（尺寸/注释/lint 细则/覆盖率），
+但安全红线（凭据/租户/日志脱敏）仍无条件适用：
+
+1. **vendored codexgo 核心包**：保持上游风格原样——按本规范重排会让后续从 codex
+   上游持续移植的 diff 爆炸，毁掉同步管道（AD-11 的核心价值之一）。我们新写的
+   适配层（threadstore-PG 后端、租户注入、会话调度器）完全遵循本规范；
+2. **生成代码**（protobuf/OpenAPI 生成物）：不手改、不 lint、不计覆盖率，
+   以契约文件为准重新生成。
+
 ## 1. 通用铁律（三语言一致）
 
-1. **不可变优先**：不原地修改传入对象；更新返回新副本（全局 coding-style 同款，review 必查）；
+1. **边界不可变（2026-08-09 user 定口径）**：不修改传入参数、公开函数更新返回新副本
+   ——保证跨边界无隐蔽副作用；函数内部局部变量可变随意（不与 Go 惯用法对抗）；
+   性能热点允许原地修改，但必须注释声明并在 review 中确认；
 2. **边界校验**：所有外部输入（API 请求、Connector 上报、MCP 调用参数、LLM 输出）
    进入业务逻辑前必须 schema 校验，fail fast；**LLM 输出视为不可信输入**；
 3. **错误处理**：错误必须处理或显式向上传递并附加上下文；禁止吞错、禁止裸 catch/recover；
@@ -56,7 +69,8 @@
 ## 6. Git 与 PR
 
 - 分支：`feat/spec-1.2-connector-core` 式命名（type/spec 号-slug）；main 受保护；
-- commit：`<type>: <description>`，单 commit 单意图；spec 实装期允许 WIP commit，
+- commit：`<type>: <description>`，**description 用中文**（2026-08-09 user 定；
+  type 保持英文小写）；单 commit 单意图；spec 实装期允许 WIP commit，
   合并前 squash 成有意义序列；
 - PR：描述含 spec 链接 + DoD 勾选状态 + 测试证据（输出粘贴或 CI 链接）；
   安全敏感改动（凭据/租户/审批路径）必须额外过 security review；
