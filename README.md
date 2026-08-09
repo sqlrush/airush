@@ -15,6 +15,7 @@
 | [Agent 核心设计](docs/agent-core-design.md) | codexgo 抽核服务化方案（AD-11 落地） |
 | [codexgo 同步评估](docs/codexgo-sync-assessment.md) | codex 0.136→0.147 功能盘点与同步策略 C |
 | [存储选型](docs/storage-selection.md) | 图/向量/记忆/时序库选型论证与替换路径 |
+| [记忆与知识架构详解](docs/memory-knowledge-architecture.md) | Graphiti/Neo4j 分工、检索机制、记忆分层与连续性、文档管道、embedding 部署 |
 | [Skill 运行时](docs/skill-runtime-design.md) | 跨容器 MCP 调用、多 agent 复用、Job 型 skill |
 | [k8s 伸缩设计](docs/k8s-scaling-design.md) | 各组件伸缩信号矩阵、KEDA/HPA、优雅排水 |
 | [解耦架构](docs/decoupling-architecture.md) | 8 个可替换点的契约边界与替换成本 |
