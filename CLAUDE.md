@@ -37,6 +37,10 @@ SPEC（编码前讨论） → TDD 编码 → 集成测试 → Code Review → Re
 
 **user approve spec 是进入编码的硬门槛。**
 
+**分级预批（2026-08-09 user 定）**：Stage 0 纯工程类 spec（脚手架/lint/CI/测试框架等
+12 个）起草自检达标并 push DRAFT 后**即视为预批可开工**，user 异议后修改；
+Stage 1 起所有 spec 恢复严格事前 approve，无例外。
+
 ## 规则 2：SPEC 结构与详细度
 
 - 命名：`specs/spec-<stage>.<序号>-<slug>.md`；模板结构见 roadmap 第 6 节（10 节必含）；
@@ -49,6 +53,8 @@ SPEC（编码前讨论） → TDD 编码 → 集成测试 → Code Review → Re
 | §6 风险条数（含概率 + 缓解，禁泛泛之词） | ≥ 5 |
 | §7 DoD 条数 | ≥ 10 |
 | §8 Q&A 数（每个 ≥2 选项 + ★推荐 + 理由） | ≥ 4 |
+
+（本组数值 2026-08-09 user 确认维持，不升 pgrac 级。）
 
 - 流程：起草自检达标 → **立即 commit + push（顶部标 `DRAFT — 待 user approve`）** → user 评审
   → approve 后删 DRAFT 标记加 approve 日期 → spec frozen；后续修订只能追加 changelog 不重写；
@@ -64,7 +70,9 @@ SPEC（编码前讨论） → TDD 编码 → 集成测试 → Code Review → Re
 
 ## 规则 4：测试与质量
 
-- 单元测试覆盖率 ≥ **80%**；集成测试覆盖核心路径；每个错误码有触发用例；
+- 单元测试覆盖率**分层（2026-08-09 user 定）**：后端（Go/Python）≥ **80%**；
+  前端逻辑层（状态/数据处理/hooks）≥ **70%**，UI 组件不计入强制指标；
+  集成测试覆盖核心路径；每个错误码有触发用例；
 - CI 全绿才能合并 main；lint、安全扫描必须通过；分支保护开启后禁止绕过；
 - 性能敏感路径（采集上报、接入网关、LLM 网关）每 Stage 留基线数据，回归 >5% 必须查根因；
 - 测试红线：禁止为过 CI 注释/跳过失败用例；skip 必须带 issue 链接与理由。
