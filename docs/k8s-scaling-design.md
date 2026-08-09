@@ -19,6 +19,20 @@
 节点层：Cluster Autoscaler（或云厂商 Karpenter 等价物）；skill 池放独立节点组
 （污点隔离），防止分析负载挤压 agent-runtime。
 
+### 1.1 存储部署形态（按环境分，2026-08-09 定）
+
+存储组件**不一刀切进 k8s**，按环境分形态，应用只见连接串（spec-0.7 配置注入，
+Helm 存储子 chart 以 `storage.builtin` 开关）：
+
+| 环境 | 形态 |
+|---|---|
+| 生产 SaaS | **存储不进业务 k8s 集群**：PG/Redis 用云托管（RDS 等），对象存储托管；Neo4j 独立部署（无成熟国内托管） |
+| 开发/测试 | 全套进 k8s（kind + Helm 内置存储，`make dev-up` 一键全栈） |
+| 私有化交付（Stage 4） | Helm 离线包内置存储（CloudNativePG / Neo4j Helm / Redis operator）——客户内网无云托管，硬需求 |
+
+生产不进 k8s 的理由：小团队把主备/备份/监控外包给云厂商是决定性减负；
+计算与存储故障域分离（k8s 集群升级/重建不牵连数据）；数据库 IO 绕开 CSI 层损耗。
+
 ## 2. 关键机制
 
 ### 2.1 为什么 agent-runtime 能横向伸缩
