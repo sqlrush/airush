@@ -30,10 +30,10 @@
 │  └ 受控执行器  │◀──指令下发────│                                     │
 └──┬───┬───┬──┘               │ 控制台(React 前端 + Go API)           │
    │   │   │                   │ 控制面 PostgreSQL (RLS 多租户)        │
- MySQL PG 达梦                 │ Agent Runtime (Python, 无状态池)      │
+ MySQL PG 达梦                 │ Agent Runtime (Go, codexgo 核)        │
                                │   ├ 会话/上下文 → PG + Redis         │
-                               │   ├ 记忆 → Graphiti + Neo4j          │
-                               │   └ 调用 → Skill 服务 (无状态)        │
+                               │   ├ 记忆 → 记忆服务(Graphiti+Neo4j)   │
+                               │   └ MCP → Skill 服务 (无状态)         │
                                │ LLM 网关 → DeepSeek/Qwen/GLM/Claude  │
                                │ 知识库(图谱+pgvector)  审批/审计服务    │
                                └─────────────────────────────────────┘
@@ -53,6 +53,8 @@
 | AD-8 | LLM 接入 | **独立 LLM 网关**（LiteLLM 起步）：多供应商、按租户配额计费、模型路由、缓存降级 | agent 直连供应商否决：成本与限流失控 |
 | AD-9 | 动作类操作安全 | **审批工作流 + 一次性令牌 + 双层白名单**（平台定义操作类型、客户侧 Connector 配置允许范围）；只读操作自动执行全量审计 | 无审批直接执行否决：AI 对生产库操作必须有人工门 |
 | AD-10 | 多租户隔离 | 控制面 PG **Row-Level Security** 强制 tenant_id；记忆/知识按租户命名空间；每 Connector 独立 mTLS 证书；大客户可升级独立 Runtime 池 | 应用层过滤否决：一处遗漏即数据串租 |
+| AD-11 | Agent 核心 | **基于 ~/codexgo 抽核改造**（Go）：复用 core/protocol/mcp/multiagent/threadstore，换存储后端为 PG/Redis、注入租户上下文、服务化运行；保留差分基建以持续移植 codex 上游能力。详见 `docs/agent-core-design.md` | codex 原生否决：引入 Rust 栈 + 935K 行陌生代码深度 fork；opencode 否决：Node 服务端进生产栈；开源框架（LangGraph 等）否决：框架锁定且多租户服务化工作量相同 |
+| AD-12 | Skill 调用协议 | **MCP（streamable HTTP）**：skill 容器 = 无状态 MCP server，工具发现/schema/调用走 MCP 标准；替换早期 gRPC 设想 | 自定义 gRPC 否决：需自建工具发现与 schema 机制，且与 codexgo MCP client 资产脱节 |
 
 ## 2. 组件职责
 
@@ -69,19 +71,28 @@
 租户与用户管理、数据源接入、agent 配置（绑定数据库、挂载 skill、巡检策略）、
 巡检报告与诊断会话界面、审批与审计视图。
 
-### 2.3 Agent Runtime（Python，无状态 Deployment 池）
+### 2.3 Agent Runtime（Go，codexgo 抽核，无状态 Deployment 池）
 
-按租户上下文加载 agent 配置执行：会话管理（PG）、上下文管理（Redis）、
-记忆读写（Graphiti）、知识检索（图谱 + pgvector）、skill 编排调用、LLM 网关调用。
+基于 codexgo 核心包（core/protocol/mcp/multiagent/threadstore）服务化改造（AD-11）。
+按租户上下文加载 agent 配置执行：会话管理（threadstore→PG 后端）、上下文管理（Redis）、
+记忆读写（经记忆服务 API）、知识检索（图谱 + pgvector）、skill 编排（MCP client）、LLM 网关调用。
+抽核方案详见 `docs/agent-core-design.md`。
 
-### 2.4 Skill 服务（Python，无状态）
+### 2.4 Skill 服务（无状态 MCP server，语言无关，Python 为主）
 
-输入结构化数据、输出结论，不碰数据库、不碰凭据。两种形态：
+输入结构化数据、输出结论，不碰数据库、不碰凭据。skill 容器 = MCP server（AD-12），
+经 `tools/list` 自声明 schema，被多个 agent 并发调用。两种形态：
 
-- **常驻型**（Deployment + gRPC）：高频分析类（慢查询分析、巡检报告、基线对比）；
+- **常驻型**（Deployment + MCP streamable HTTP）：高频分析类（慢查询分析、巡检报告、基线对比）；
 - **Job 型**（k8s Job/CronJob）：低频重活（月度合规报告、大规模扫描）。
 
-Skill 注册表存控制面，声明输入/输出 schema；agent 挂载 skill 即配置关联。
+Skill 注册表存控制面（记录 MCP endpoint 与租户可见性）；agent 挂载 skill 即配置关联。
+跨容器调用细节见 `docs/skill-runtime-design.md`。
+
+### 2.6 记忆服务（Python，包装 Graphiti）
+
+独立服务包装 Graphiti+Neo4j，对 Agent Runtime 暴露与实现无关的记忆 API
+（写入/检索/遗忘），是 AD-5 的解耦落点（换记忆库 = 换此服务实现）。
 
 ### 2.5 存储矩阵
 
@@ -98,7 +109,10 @@ Skill 注册表存控制面，声明输入/输出 schema；agent 挂载 skill �
 | 层 | 选型 | 理由 |
 |---|---|---|
 | Connector / 控制面 API / 接入网关 | Go | 单二进制交付、高并发长连接 |
-| Agent Runtime / Skill | Python | LLM 与数据分析生态 |
+| Agent Runtime | Go（codexgo 抽核，AD-11） | 自有资产、栈统一、MCP 原生 |
+| Skill 服务 | MCP server，Python 为主（协议语言无关） | 分析与 LLM 生态；性能敏感 skill 可用 Go |
+| 记忆服务 | Python（Graphiti） | Graphiti 官方栈 |
+| LLM 网关 | LiteLLM（Python，现成） | 多供应商、配额计费开箱即用 |
 | 控制台前端 | React + TypeScript | 生态成熟 |
 | 编排 | k8s + Helm | 既定要求；本地开发用 kind |
 | LLM | DeepSeek / Qwen / GLM / Claude（经网关） | 国内 SaaS 合规 + 能力分层路由 |
@@ -125,3 +139,4 @@ Skill 注册表存控制面，声明输入/输出 schema；agent 挂载 skill �
 | 日期 | 变更 | 批准 |
 |---|---|---|
 | 2026-08-08 | 初版（brainstorming 收敛） | user |
+| 2026-08-08 | 新增 AD-11（Agent 核心 = codexgo 抽核）、AD-12（Skill 协议 = MCP）；技术栈联动变更：Agent Runtime Python→Go、Skill gRPC→MCP、新增记忆服务组件 | user（选型问答确认） |
