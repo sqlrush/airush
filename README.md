@@ -17,6 +17,13 @@ make obs-up   # 本地观测栈（Grafana :3000，OTLP :4318）
 # 三信号冒烟：deploy/scripts/obs-smoke.sh（起 gateway → /demo → Tempo/Prom/Loki 断言）
 ```
 
+## 版本策略（spec-0.11 §2.1）
+
+平台统一版本号 `v<major>.<minor>.<patch>[-rc.N]`（全组件与 chart 同号）；
+pre-1.0：minor = Stage 完成/重要功能组，patch = 修复；v1.0.0 = GA（Stage 4）。
+发布：`deploy/scripts/release-prep.sh <version>` → PR 合并 CHANGELOG → 打 tag，
+release workflow 自动完成全绿校验/镜像/chart/GitHub Release。tag 不可变，打错发新 patch。
+
 ## 文档导航
 
 | 文档 | 内容 |

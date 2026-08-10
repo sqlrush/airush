@@ -1,0 +1,91 @@
+# spec-0.11 D3：release 链路。v* tag 触发；tag 必须指向 main 上已全绿的 commit；
+# 产物四方版本一致（tag = 二进制 --version = chart version = 镜像 tag），
+# 任一断言失败即中止且镜像推送放最后（无部分产物残留）。
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    name: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: verify tag on green main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main \
+            || { echo "ERROR: tag 未指向 main 上的 commit"; exit 1; }
+          for ctx in "ci/lint" "ci/test" "ci/build" "ci/integration"; do
+            state=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/check-runs" \
+              --jq ".check_runs[] | select(.name==\"$ctx\") | .conclusion" | head -1)
+            [ "$state" = "success" ] || { echo "ERROR: $ctx 非全绿（$state）"; exit 1; }
+          done
+          echo "tag commit 全绿校验通过"
+      - name: derive version
+        id: v
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          case "$VERSION" in
+            *-rc.*) echo "prerelease=true"  >> "$GITHUB_OUTPUT" ;;
+            *)      echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+      - name: extract release notes from CHANGELOG
+        run: |
+          V="${{ steps.v.outputs.version }}"
+          awk -v ver="$V" '
+            $0 ~ "^## \\[" ver "\\]" { grab=1; next }
+            grab && /^## \[/ { exit }
+            grab { print }
+          ' CHANGELOG.md > /tmp/notes.md
+          if ! [ -s /tmp/notes.md ]; then
+            echo "（rc 预发布：正式 notes 随 release-prep 落段生成）" > /tmp/notes.md
+          fi
+      - name: build images with version tag
+        run: |
+          V="${{ steps.v.outputs.version }}"
+          for c in console connector gateway agent-runtime; do
+            docker build -f deploy/docker/go.Dockerfile \
+              --build-arg COMPONENT=$c --build-arg VERSION="$V" \
+              -t ghcr.io/${GITHUB_REPOSITORY}/$c:v$V .
+          done
+          docker build -f deploy/docker/python.Dockerfile -t ghcr.io/${GITHUB_REPOSITORY}/skills:v$V .
+          docker build -f deploy/docker/frontend.Dockerfile -t ghcr.io/${GITHUB_REPOSITORY}/frontend:v$V .
+      - name: consistency assertions (spec-0.11 D5)
+        run: |
+          V="${{ steps.v.outputs.version }}"
+          out=$(docker run --rm -e AIRUSH_ENV=production ghcr.io/${GITHUB_REPOSITORY}/console:v$V --version)
+          echo "console reports: $out"
+          echo "$out" | grep -q "$V" || { echo "ERROR: 二进制版本 ($out) ≠ tag ($V)"; exit 1; }
+          helm package deploy/charts/airush --version "$V" --app-version "$V" -d /tmp/chart
+          helm show chart /tmp/chart/airush-"$V".tgz | grep -q "version: $V" \
+            || { echo "ERROR: chart 版本不一致"; exit 1; }
+          echo "四方一致性通过：tag=binary=chart=image=v$V"
+      - name: push images
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          V="${{ steps.v.outputs.version }}"
+          for c in console connector gateway agent-runtime skills frontend; do
+            docker push ghcr.io/${GITHUB_REPOSITORY}/$c:v$V
+          done
+      - name: create github release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          V="${{ steps.v.outputs.version }}"
+          gh release create "$GITHUB_REF_NAME" /tmp/chart/airush-"$V".tgz \
+            --title "airush $GITHUB_REF_NAME" \
+            --notes-file /tmp/notes.md \
+            --prerelease=${{ steps.v.outputs.prerelease }}
