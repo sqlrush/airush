@@ -1,0 +1,73 @@
+# spec-0.2 D1：Go lint 配置（golangci-lint v2，版本钉在 Makefile GOLANGCI_VERSION）。
+# 必开清单与豁免口径见 spec-0.2 §2.1/§1.1 D5；变更本文件先修订 spec。
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - depguard
+    - gosec
+    - revive
+  settings:
+    depguard:
+      rules:
+        # 解耦边界首条规则（spec-0.2 §1.2）：console 禁止直接 import 其他组件，
+        # 跨组件只能走 proto 契约/网络接口。其余组件规则随 Stage 1 增量补充。
+        console-no-cross-component:
+          files:
+            - "**/console/**"
+          deny:
+            - pkg: github.com/sqlrush/airush/connector
+              desc: 跨组件禁止直接 import（走 proto/API，见 decoupling-architecture §2.2）
+            - pkg: github.com/sqlrush/airush/gateway
+              desc: 跨组件禁止直接 import（走 proto/API，见 decoupling-architecture §2.2）
+            - pkg: github.com/sqlrush/airush/agent-runtime
+              desc: 跨组件禁止直接 import（走 proto/API，见 decoupling-architecture §2.2）
+    revive:
+      rules:
+        - name: function-length
+          arguments: [0, 50] # 语句数不限，函数 ≤50 行（development-standards §1.4）
+        - name: file-length-limit
+          arguments:
+            - max: 800 # 文件 ≤800 行
+        - name: cognitive-complexity
+          arguments: [25]
+        - name: exported # 导出符号必须有注释
+        - name: package-comments
+        - name: error-return
+        - name: error-strings
+        - name: indent-error-flow
+        - name: unexported-return
+  exclusions:
+    generated: lax
+    paths:
+      # vendored codexgo（spec-1.8 落地后生效，预写无副作用）。
+      # 注意：lint 逐模块执行（cd <module>），路径相对模块根，不带模块前缀。
+      - internal/codexcore
+      # 生成代码
+      - ".*_gen\\.go$"
+      - ".*\\.pb\\.go$"
+    rules:
+      # 表驱动测试允许超长函数；其余 linter 对测试仍然生效
+      - path: _test\.go$
+        linters:
+          - revive
+
+formatters:
+  enable:
+    - gofumpt
+    - gci
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/sqlrush/airush)
+  exclusions:
+    paths:
+      - internal/codexcore
+      - ".*_gen\\.go$"
+      - ".*\\.pb\\.go$"
