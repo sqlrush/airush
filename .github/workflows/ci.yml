@@ -110,12 +110,28 @@ jobs:
         if: needs.changes.outputs.py == 'true' || github.event_name == 'push'
         with:
           enable-cache: true
-      - name: test go
+      - uses: pnpm/action-setup@v4
+        if: needs.changes.outputs.fe == 'true' || github.event_name == 'push'
+        with:
+          package_json_file: frontend/package.json
+      - uses: actions/setup-node@v4
+        if: needs.changes.outputs.fe == 'true' || github.event_name == 'push'
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: cover go
         if: needs.changes.outputs.go == 'true' || github.event_name == 'push'
-        run: make test-go
-      - name: test python
+        run: make cover-go
+      - name: cover python
         if: needs.changes.outputs.py == 'true' || github.event_name == 'push'
-        run: make test-py
+        run: make cover-py
+      - name: install frontend deps
+        if: needs.changes.outputs.fe == 'true' || github.event_name == 'push'
+        run: cd frontend && pnpm install --frozen-lockfile
+      - name: cover frontend
+        if: needs.changes.outputs.fe == 'true' || github.event_name == 'push'
+        run: make cover-fe
 
   build:
     name: ci/build
