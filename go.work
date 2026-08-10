@@ -8,4 +8,5 @@ use (
 	./testkit
 	./libs/config
 	./libs/apierror
+	./libs/obs
 )
