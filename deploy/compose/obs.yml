@@ -1,0 +1,13 @@
+# spec-0.9 D4：本地观测栈（grafana/otel-lgtm all-in-one：Grafana+Prom+Loki+Tempo+Collector）。
+# dev 观测辅助（非测试依赖），版本浮动可接受；拉取异常时再钉具体 tag。
+name: airush-obs
+services:
+  lgtm:
+    image: grafana/otel-lgtm:latest
+    ports:
+      - "3000:3000"   # Grafana（admin/admin）
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP（组件默认出口）
+      - "9090:9090"   # Prometheus 查询（obs-smoke 用）
+      - "3100:3100"   # Loki 查询（obs-smoke 用）
+      - "3200:3200"   # Tempo 查询（obs-smoke 用）
