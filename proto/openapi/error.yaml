@@ -1,0 +1,33 @@
+# API 错误响应 schema 片段（spec-0.8 D4 定版）；spec-1.1 的 OpenAPI 文档 $ref 引用。
+# code 枚举以 proto/errors.json 为 SSOT，此处只约束形态不复制枚举（防双源漂移）。
+components:
+  schemas:
+    ErrorDetail:
+      type: object
+      required: [field, reason]
+      properties:
+        field:
+          type: string
+          description: 出错字段
+        reason:
+          type: string
+          description: 面向用户的字段级原因
+    ErrorResponse:
+      type: object
+      required: [code, message, trace_id]
+      properties:
+        code:
+          type: string
+          pattern: "^AR_[A-Z]+_[A-Z0-9_]+$"
+          description: 注册错误码（SSOT proto/errors.json）
+        message:
+          type: string
+          description: 面向用户的消息（注册表模板）
+        trace_id:
+          type: string
+          description: 全链路追踪 ID，与日志/审计贯通
+        details:
+          type: array
+          items:
+            $ref: "#/components/schemas/ErrorDetail"
+          description: 结构化明细（仅 E1 验证类）
