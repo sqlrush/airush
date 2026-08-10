@@ -7,7 +7,9 @@
 - **位置**：Stage 0 第 1 个功能点，无前置 spec；产出的目录结构与构建约定被后续所有 spec 依赖；
 - **配套规则**：CLAUDE.md 规则 1（5 阶段流程）、规则 2（本 spec 即首个按模板起草的 spec）、规则 8（多语言 lint 工具在 spec-0.2 定版，本 spec 只预留位置）；
 - **关联文档**：`docs/2026-08-08-airush-platform-design.md`（§3 技术栈）、`docs/development-roadmap.md`（§2.1）；
-- **决策日期**：2026-08-08，待 user approve。
+- **决策日期**：2026-08-08，待 user approve；
+- **修订**：2026-08-09 对齐 AD-11（agent 核心 = codexgo 抽核，Go）——`agent-runtime/`
+  由 Python 改为 Go 模块，Python workspace 仅保留 `skills/`（记忆服务 Stage 3 引入时再建目录）。
 
 ## §1 范围
 
@@ -16,8 +18,8 @@
 | # | Deliverable | 文件清单 | 估算 | 说明 |
 |---|---|---|---|---|
 | D1 | 顶层目录结构 | `console/` `connector/` `gateway/` `agent-runtime/` `skills/` `frontend/` `deploy/` `proto/` 各含占位 README | ~10 文件 | 按可部署组件划分，见 §8 Q1/Q2 |
-| D2 | Go workspace | `go.work`、`console/go.mod`、`connector/go.mod`、`gateway/go.mod`、各含一个可编译的 `cmd/<name>/main.go`（打印版本退出，~20 LOC/个） | ~7 文件 | Go 1.23+ |
-| D3 | Python workspace | `agent-runtime/pyproject.toml`、`skills/pyproject.toml`（uv workspace，根 `pyproject.toml` 聚合）、各含可 import 的最小包 + 一个冒烟测试 | ~8 文件 | Python 3.12+，uv 管理 |
+| D2 | Go workspace | `go.work`、`console/go.mod`、`connector/go.mod`、`gateway/go.mod`、`agent-runtime/go.mod`（AD-11：codexgo 抽核宿主），各含一个可编译的 `cmd/<name>/main.go`（打印版本退出，~20 LOC/个） | ~9 文件 | Go 1.23+ |
+| D3 | Python workspace | `skills/pyproject.toml`（uv workspace，根 `pyproject.toml` 聚合）、可 import 的最小包 + 一个冒烟测试 | ~5 文件 | Python 3.12+，uv 管理 |
 | D4 | 前端脚手架 | `frontend/package.json`（pnpm + Vite + React + TS 最小工程，可 build） | ~10 文件 | 仅骨架，UI 从 spec-1.13 开始 |
 | D5 | 根构建入口 | `Makefile`（targets 见 §2.2）、`.editorconfig`、`.gitignore` | 3 文件 ~120 行 | 唯一构建入口约定 |
 | D6 | 仓库门面 | `README.md`（项目简介 + 快速开始 + 文档导航） | 1 文件 ~60 行 | — |
@@ -47,7 +49,7 @@ airush/
 ├── console/        # Go：控制面 API
 ├── connector/      # Go：客户侧采集/执行代理
 ├── gateway/        # Go：Connector 接入网关
-├── agent-runtime/  # Python：智能体运行时
+├── agent-runtime/  # Go：智能体运行时（codexgo 抽核宿主，AD-11）
 ├── skills/         # Python：skill 服务集（每个 skill 一个子包）
 ├── frontend/       # React+TS：控制台前端
 ├── proto/          # 跨服务 gRPC/protobuf 契约（唯一来源）
@@ -80,8 +82,8 @@ airush/
 |---|---|---|
 | T1 | `make build` 全新环境通过 | 构建链完整性 |
 | T2 | `make test` 通过且含 ≥1 Go / ≥1 Python 冒烟用例 | 测试骨架可用 |
-| T3 | 三个 Go 二进制 `--version` 输出版本号 | cmd 入口约定成立 |
-| T4 | `uv sync` 后 `agent-runtime`/`skills` 包可 import | Python workspace 成立 |
+| T3 | 四个 Go 二进制 `--version` 输出版本号 | cmd 入口约定成立 |
+| T4 | `uv sync` 后 `skills` 包可 import | Python workspace 成立 |
 | T5 | `pnpm build` 产出 `frontend/dist` | 前端链路成立 |
 
 ## §5 与现有代码的 contract

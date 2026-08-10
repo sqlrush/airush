@@ -1,6 +1,6 @@
 # AIRush 开发路线图 v1.0
 
-> 状态：**DRAFT — 待 user approve**
+> 状态：**user approved（2026-08-09，"开始基于 roadmap 写每个 spec"指示视为认可）**
 > 配套文档：`docs/2026-08-08-airush-platform-design.md`（总体设计 SSOT）、`CLAUDE.md`（研发纪律）
 > 本文档是开发节奏与 spec 拆分的权威来源，进度表随每个 spec 的 frozen/shipped 状态持续更新。
 
