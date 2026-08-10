@@ -201,5 +201,5 @@ SPEC（编码前讨论） → TDD 编码 → 集成测试 → Code Review → Re
 | spec-0.10 | **shipped**（dev-up 一键全栈 + DEV VERIFY ALL PASS；Go 镜像 <30MB 达标） | 2026-08-09 起草；08-10 实施完成 |
 | spec-0.11 | **shipped**（T1-T7 过；v0.0.1-rc.1 全链路实弹演练成功） | 2026-08-09 起草；08-10 实施完成 |
 | spec-0.12 | **shipped**（验收签署，自动项 7/7） | 2026-08-09 起草；08-10 验收执行 |
-| spec-1.1 | DRAFT · **待 user approve**（严格事前批准，approve 前不编码） | 2026-08-10 起草 |
+| spec-1.1 | **frozen · 实施中**（user approve，Q1-Q6 全采★） | 2026-08-10 起草并 approve |
 | 其余 Stage 1 specs | 按序起草（严格事前 approve） | — |

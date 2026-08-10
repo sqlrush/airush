@@ -1,6 +1,6 @@
 # spec-1.1 控制面领域模型与 API 骨架
 
-> **DRAFT — 待 user approve**（Stage 1 严格事前批准：approve 前不编码）
+> **frozen** — user approve 2026-08-10（Q1-Q6 全部采纳★推荐；⊕ 增量列与复合外键形态一并确认）
 
 ## Header / 元数据
 
