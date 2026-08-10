@@ -10,7 +10,9 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write src",
-    "format:check": "prettier --check src"
+    "format:check": "prettier --check src",
+    "test": "vitest run",
+    "test:cover": "vitest run --coverage"
   },
   "dependencies": {
     "react": "^19.0.0",
@@ -19,6 +21,8 @@
   "devDependencies": {
     "@eslint/js": "^9.0.0",
     "@types/react": "^19.0.0",
+    "@vitest/coverage-v8": "^3.0.0",
+    "vitest": "^3.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^5.0.0",
     "eslint": "^9.0.0",
