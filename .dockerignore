@@ -1,0 +1,16 @@
+# spec-0.10：镜像构建上下文瘦身
+.git
+bin/
+frontend/node_modules
+frontend/dist
+.venv
+**/__pycache__
+docs/
+specs/
+deploy/charts
+deploy/kind
+deploy/compose
+*.md
+.env
+.env.*
+.coverage

@@ -190,3 +190,46 @@ obs-up:
 
 obs-down:
 	@docker compose -f deploy/compose/obs.yml down
+
+## images: 构建全部镜像（spec-0.10 D1）；单个: make image-console 等
+## PUSH=true 推送 ghcr（CI main 分支 image job 用）
+REGISTRY := ghcr.io/sqlrush/airush
+GIT_SHA := $(shell git rev-parse --short HEAD)
+
+images: image-console image-connector image-gateway image-agent-runtime image-skills image-frontend
+
+image-console image-connector image-gateway image-agent-runtime:
+	$(eval C := $(patsubst image-%,%,$@))
+	docker build -f deploy/docker/go.Dockerfile --build-arg COMPONENT=$(C) \
+		--build-arg VERSION=0.0.0-dev+$(GIT_SHA) \
+		-t $(REGISTRY)/$(C):$(GIT_SHA) -t $(REGISTRY)/$(C):latest .
+	@if [ "$(PUSH)" = "true" ]; then docker push $(REGISTRY)/$(C):$(GIT_SHA) && docker push $(REGISTRY)/$(C):latest; fi
+
+image-skills:
+	docker build -f deploy/docker/python.Dockerfile \
+		-t $(REGISTRY)/skills:$(GIT_SHA) -t $(REGISTRY)/skills:latest .
+	@if [ "$(PUSH)" = "true" ]; then docker push $(REGISTRY)/skills:$(GIT_SHA) && docker push $(REGISTRY)/skills:latest; fi
+
+image-frontend:
+	docker build -f deploy/docker/frontend.Dockerfile \
+		-t $(REGISTRY)/frontend:$(GIT_SHA) -t $(REGISTRY)/frontend:latest .
+	@if [ "$(PUSH)" = "true" ]; then docker push $(REGISTRY)/frontend:$(GIT_SHA) && docker push $(REGISTRY)/frontend:latest; fi
+
+## dev-up: 一键本地 k8s 环境（spec-0.10 D4）：kind + 镜像 + Helm 全栈
+KIND_CLUSTER := airush-dev
+
+dev-up:
+	@kind get clusters 2>/dev/null | grep -qx $(KIND_CLUSTER) || \
+		kind create cluster --config deploy/kind/config.yaml
+	@$(MAKE) image-gateway image-console
+	kind load docker-image $(REGISTRY)/gateway:latest $(REGISTRY)/console:latest --name $(KIND_CLUSTER)
+	helm upgrade --install airush deploy/charts/airush \
+		-f deploy/charts/airush/values-dev.yaml --wait --timeout 5m
+	@kubectl --context kind-$(KIND_CLUSTER) get pods
+	@echo "dev-up OK：kubectl port-forward svc/airush-gateway 8081:8081 后访问 /healthz"
+
+dev-down:
+	kind delete cluster --name $(KIND_CLUSTER)
+
+helm-lint:
+	helm lint deploy/charts/airush -f deploy/charts/airush/values-dev.yaml
