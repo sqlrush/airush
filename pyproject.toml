@@ -17,6 +17,14 @@ select = ["E", "F", "W", "I", "UP", "B", "S"]
 [tool.ruff.lint.per-file-ignores]
 "**/tests/**" = ["S101"] # 测试中 assert 是合法手段
 
+[tool.pytest.ini_options]
+asyncio_mode = "auto" # async 用例免装饰器（spec-0.4 D2）
+testpaths = ["skills/tests"]
+
+[tool.coverage.report]
+show_missing = true
+omit = ["*/generated/*"]
+
 [tool.mypy]
 strict = true
 python_version = "3.12"
