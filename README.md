@@ -3,7 +3,15 @@
 面向企业客户的 SaaS 多租户数据库管理智能体平台：智能运维管理 + 巡检与合规。
 支持 MySQL 协议族、PostgreSQL 协议族与达梦，客户侧 Connector 反向隧道接入。
 
-**当前阶段**：设计与规划（Stage 0 尚未开始编码）。
+**当前阶段**：Stage 0 工程基础设施实施中（specs 已全量起草，分级预批开工）。
+
+## 快速开始
+
+```bash
+make doctor   # 检查工具链：Go 1.23+ / uv / Node 22 / pnpm
+make build    # 构建全部组件
+make test     # 全部单元测试
+```
 
 ## 文档导航
 

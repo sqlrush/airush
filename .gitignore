@@ -11,11 +11,15 @@
 *.key
 !*.pub.key
 
-# 构建产物（spec-0.1 落地时按三语言扩展）
+# 构建产物（spec-0.1 定版）
 dist/
 node_modules/
 __pycache__/
 *.pyc
 .venv/
-bin/
+/bin/
 coverage*
+*.tsbuildinfo
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
