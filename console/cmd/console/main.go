@@ -1,10 +1,13 @@
-// Command console is a scaffold placeholder (spec-0.1)：仅打印版本退出，
-// 真实实现从对应 Stage 1 spec 起整体替换本文件。
+// Command console 是控制面入口。当前提供 migrate 子命令（spec-0.6）；
+// API 服务随 spec-1.1 实装。
 package main
 
 import (
 	"flag"
 	"fmt"
+	"os"
+
+	"github.com/sqlrush/airush/console/internal/dbmigrate"
 )
 
 // version 由构建期 -ldflags 注入（spec-0.10/0.11 定版链路）。
@@ -18,5 +21,13 @@ func banner(v string) string {
 func main() {
 	flag.Bool("version", false, "print version and exit")
 	flag.Parse()
+
+	if args := flag.Args(); len(args) > 0 && args[0] == "migrate" {
+		if err := dbmigrate.Run(args[1:]); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	fmt.Println(banner(version))
 }
