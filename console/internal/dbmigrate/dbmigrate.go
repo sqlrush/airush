@@ -6,7 +6,6 @@ package dbmigrate
 import (
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 
 	gomigrate "github.com/golang-migrate/migrate/v4"
@@ -17,19 +16,8 @@ import (
 	"github.com/sqlrush/airush/console/migrations"
 )
 
-// envDBURL 是控制面库连接串环境变量（命名遵循 spec-0.7 §2.1 约定）。
-const envDBURL = "AIRUSH_CONSOLE_DB_URL"
-
-// Run 执行迁移子命令（up / down / version），连接串取自环境变量。
-func Run(args []string) error {
-	dbURL := os.Getenv(envDBURL)
-	if dbURL == "" {
-		return fmt.Errorf("环境变量 %s 未设置（控制面 PG 连接串，如 postgres://user:pass@host:5432/airush）", envDBURL)
-	}
-	return RunWithURL(dbURL, args)
-}
-
-// RunWithURL 以显式连接串执行迁移子命令（集成测试入口）。
+// RunWithURL 以显式连接串执行迁移子命令（连接串由 main 经 spec-0.7 配置框架供给，
+// 集成测试直连本入口）。
 func RunWithURL(dbURL string, args []string) error {
 	if len(args) != 1 {
 		return errors.New("用法: console migrate <up|down|version>")

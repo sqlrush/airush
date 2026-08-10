@@ -191,6 +191,9 @@ jobs:
       - name: build go
         if: needs.changes.outputs.go == 'true' || github.event_name == 'push'
         run: make build-go
+      - name: env example consistency
+        if: needs.changes.outputs.go == 'true' || github.event_name == 'push'
+        run: deploy/scripts/check-env-example.sh
       - name: build python
         if: needs.changes.outputs.py == 'true' || github.event_name == 'push'
         run: make build-py

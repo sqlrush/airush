@@ -8,6 +8,8 @@ require (
 	github.com/sqlrush/airush/testkit v0.0.0-00010101000000-000000000000
 )
 
+require github.com/joho/godotenv v1.5.1 // indirect
+
 require (
 	dario.cat/mergo v1.0.2 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
@@ -52,6 +54,7 @@ require (
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/shirou/gopsutil/v4 v4.26.6 // indirect
 	github.com/sirupsen/logrus v1.9.4 // indirect
+	github.com/sqlrush/airush/libs/config v0.0.0-00010101000000-000000000000
 	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/testcontainers/testcontainers-go v0.44.0 // indirect
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.44.0 // indirect
@@ -72,3 +75,5 @@ require (
 )
 
 replace github.com/sqlrush/airush/testkit => ../testkit
+
+replace github.com/sqlrush/airush/libs/config => ../libs/config

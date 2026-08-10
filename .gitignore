@@ -7,6 +7,7 @@
 # secrets（任何环境配置实值不入库）
 .env
 .env.*
+!.env.example
 *.pem
 *.key
 !*.pub.key

@@ -11,7 +11,7 @@
 | [spec-0.4](spec-0.4-unit-test-framework.md) | 单元测试框架与覆盖率门槛 | DRAFT · 已实施（阻断待 spec-1.1 激活） | — | — |
 | [spec-0.5](spec-0.5-integration-test-framework.md) | 集成测试框架 | DRAFT · 已实施 | — | — |
 | [spec-0.6](spec-0.6-db-schema-migration.md) | 控制面 DB schema 与迁移框架 | DRAFT · 已实施（表结构 user 已评审） | — | — |
-| [spec-0.7](spec-0.7-config-framework.md) | 配置框架 | DRAFT（预批可开工） | — | — |
+| [spec-0.7](spec-0.7-config-framework.md) | 配置框架 | DRAFT · 已实施 | — | — |
 | [spec-0.8](spec-0.8-error-codes.md) | 错误码与 API 错误规范 | DRAFT（预批可开工） | — | — |
 | [spec-0.9](spec-0.9-observability-baseline.md) | 可观测性基线 | DRAFT（预批可开工） | — | — |
 | [spec-0.10](spec-0.10-image-helm-skeleton.md) | 镜像构建与 Helm chart 骨架 | DRAFT（预批可开工） | — | — |
