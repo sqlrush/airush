@@ -6,7 +6,7 @@
 | Spec | 名称 | 状态 | approve 日期 | shipped 日期 |
 |---|---|---|---|---|
 | [spec-0.1](spec-0.1-monorepo-scaffold.md) | monorepo 脚手架与构建体系 | DRAFT · 已实施（T1-T5 过） | — | — |
-| [spec-0.2](spec-0.2-lint-and-style.md) | 代码风格与 lint | DRAFT（预批可开工） | — | — |
+| [spec-0.2](spec-0.2-lint-and-style.md) | 代码风格与 lint | DRAFT · 已实施（T1-T7 过） | — | — |
 | [spec-0.3](spec-0.3-ci-pipeline.md) | CI/CD pipeline | DRAFT（预批可开工） | — | — |
 | [spec-0.4](spec-0.4-unit-test-framework.md) | 单元测试框架与覆盖率门槛 | DRAFT（预批可开工） | — | — |
 | [spec-0.5](spec-0.5-integration-test-framework.md) | 集成测试框架 | DRAFT（预批可开工） | — | — |
