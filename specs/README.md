@@ -15,7 +15,7 @@
 | [spec-0.8](spec-0.8-error-codes.md) | 错误码与 API 错误规范 | DRAFT · 已实施 | — | — |
 | [spec-0.9](spec-0.9-observability-baseline.md) | 可观测性基线 | DRAFT · 已实施 | — | — |
 | [spec-0.10](spec-0.10-image-helm-skeleton.md) | 镜像构建与 Helm chart 骨架 | DRAFT · 已实施 | — | — |
-| [spec-0.11](spec-0.11-versioning-release.md) | 版本号与 release 节奏 | DRAFT（预批可开工） | — | — |
-| [spec-0.12](spec-0.12-stage0-acceptance.md) | Stage 0 验收 | DRAFT（验收结论须 user 签署） | — | — |
+| [spec-0.11](spec-0.11-versioning-release.md) | 版本号与 release 节奏 | DRAFT · 已实施 | — | — |
+| [spec-0.12](spec-0.12-stage0-acceptance.md) | Stage 0 验收 | DRAFT · 验收中（待 user 签署） | — | — |
 
 完整规划清单见 `docs/development-roadmap.md` 第 2-4 节；spec 文件在进入起草时才创建。
