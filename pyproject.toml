@@ -1,0 +1,5 @@
+# uv workspace 虚拟根（spec-0.1 D3）：聚合 Python 包，自身不是可安装包。
+# lint/类型配置段随 spec-0.2 追加于此。
+
+[tool.uv.workspace]
+members = ["skills"]
