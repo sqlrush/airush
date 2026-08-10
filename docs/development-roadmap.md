@@ -195,7 +195,7 @@ SPEC（编码前讨论） → TDD 编码 → 集成测试 → Code Review → Re
 | spec-0.4 | DRAFT · **已实施**（T1-T7 过；阻断开关 COVER_ENFORCE 留待 spec-1.1 打开） | 2026-08-09 起草；08-10 实施完成 |
 | spec-0.5 | DRAFT · **已实施**（T1-T7 过；ci/integration 入 required checks） | 2026-08-09 起草；08-10 实施完成 |
 | spec-0.6 | DRAFT · **已实施**（T1-T8 过；表结构经 user 评审；RLS 模板经集成实证含连接池 GUC 空串修正） | 2026-08-09 起草；08-10 实施完成 |
-| spec-0.7 | DRAFT（预批可开工） | 2026-08-09 |
+| spec-0.7 | DRAFT · **已实施**（T1-T8 过；自研薄层替代 caarlos0/env，见 spec 修订） | 2026-08-09 起草；08-10 实施完成 |
 | spec-0.8 | DRAFT（预批可开工） | 2026-08-09 |
 | spec-0.9 | DRAFT（预批可开工） | 2026-08-09 |
 | spec-0.10 | DRAFT（预批可开工） | 2026-08-09 |

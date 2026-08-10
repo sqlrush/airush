@@ -8,9 +8,11 @@
   与 spec-0.10（k8s Secret→env 注入）、spec-2.7（平台侧 secret 管理）衔接；
 - **安全权重**：全局 security.md「secrets 走环境变量/secret 管理 + 启动校验存在性 +
   永不入 git」与 CLAUDE.md 安全原则 5 的工程落地；
-- **依赖审批**：本 spec 新增后端直接依赖（规则 8 事前审批制）——Go：`caarlos0/env`、
-  `joho/godotenv`（dev-only）；Python：`pydantic-settings`。**approve 本 spec 即完成
-  该三项依赖审批**，选型理由见 §8 Q1；
+- **依赖审批**：本 spec 新增后端直接依赖（规则 8 事前审批制）——Go：`joho/godotenv`
+  （dev-only 加载）；Python：`pydantic-settings`。**approve 本 spec 即完成审批**；
+- **实施修订（2026-08-10）**：Q1 的 caarlos0/env **未引入**——common 回退/secret/oneof
+  均为自定义标签，在其之上包装的代码量与自研相当，最终以 ~200 行自研反射层实现
+  （T1-T8 覆盖），依赖面进一步缩减，符合 Q1"薄、可 fork"的立场；
 - **决策日期**：2026-08-09。
 
 ## §1 范围
