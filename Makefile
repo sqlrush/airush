@@ -5,7 +5,7 @@
 SHELL := /bin/bash
 GO_MODULES := console connector gateway agent-runtime
 # GO_ALL 含非组件模块（testkit 等）：参与 lint/test/cover，不产二进制
-GO_ALL := $(GO_MODULES) testkit libs/config libs/apierror
+GO_ALL := $(GO_MODULES) testkit libs/config libs/apierror libs/obs
 
 # 本仓库使用 go.work 工作区；强制 -mod=readonly，避免用户全局 -mod=mod 与
 # workspace 模式冲突（workspace 下 -mod 仅允许 readonly/vendor）。
@@ -182,3 +182,11 @@ doctor:
 	check node     "node --version"    "install Node 22 LTS"; \
 	check pnpm     "pnpm --version"    "corepack enable pnpm"; \
 	[ $$ok -eq 1 ] && echo "doctor: OK" || { echo "doctor: missing tools"; exit 1; }
+
+## obs: 本地观测栈（spec-0.9 D4；grafana/otel-lgtm，Grafana 于 :3000）
+obs-up:
+	@docker compose -f deploy/compose/obs.yml up -d
+	@echo "obs ready: grafana http://localhost:3000 (admin/admin), OTLP :4318"
+
+obs-down:
+	@docker compose -f deploy/compose/obs.yml down

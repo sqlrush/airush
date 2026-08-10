@@ -163,6 +163,12 @@ func setField(fv reflect.Value, spec fieldSpec, raw string) *FieldError {
 			return fail(parseReason(spec, raw, "时长（如 30s/5m）"))
 		}
 		fv.SetInt(int64(d))
+	case float64:
+		f, err := strconv.ParseFloat(raw, 64)
+		if err != nil {
+			return fail(parseReason(spec, raw, "浮点数"))
+		}
+		fv.SetFloat(f)
 	default:
 		return fail(fmt.Sprintf("不支持的字段类型 %s", fv.Type()))
 	}

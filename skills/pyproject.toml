@@ -3,7 +3,7 @@ name = "airush-skills"
 version = "0.0.0"
 description = "AIRush skill services (scaffold placeholder, framework lands in spec-1.9)"
 requires-python = ">=3.12"
-dependencies = ["pydantic-settings>=2.7"]
+dependencies = ["pydantic-settings>=2.7", "structlog>=24"]
 
 [dependency-groups]
 dev = [

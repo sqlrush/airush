@@ -1,22 +1,26 @@
-// Command gateway is a scaffold placeholder（spec-0.1）+ 配置框架接入（spec-0.7 D5）；
-// 真实实现从对应 Stage 1 spec 起整体替换本文件。
+// Command gateway 是 Connector 接入网关。当前提供观测演示端点（spec-0.9 D5，
+// 兼 Stage 0 验收 hello-world 载体）；隧道能力随 spec-1.2 实装。
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
 	"strings"
 
 	"github.com/sqlrush/airush/libs/config"
+	"github.com/sqlrush/airush/libs/obs"
 )
 
 const component = "gateway"
 
 // appConfig 是 gateway 的全部配置面（.env.example 与此同步，CI 校验）。
 type appConfig struct {
-	LogLevel string `env:"LOG_LEVEL" default:"info" oneof:"debug,info,warn,error" common:"true"`
-	Listen   string `env:"LISTEN_ADDR" default:":8081"`
+	LogLevel     string  `env:"LOG_LEVEL"          default:"info" oneof:"debug,info,warn,error" common:"true"`
+	Listen       string  `env:"LISTEN_ADDR"        default:":8081"`
+	OTLPEndpoint string  `env:"OTLP_ENDPOINT"      default:"" common:"true"`
+	SampleRatio  float64 `env:"TRACE_SAMPLE_RATIO" default:"1.0" common:"true"`
 }
 
 // version 由构建期 -ldflags 注入（spec-0.10/0.11 定版链路）。
@@ -25,6 +29,7 @@ var version = "0.0.0-dev"
 func main() {
 	printCfg := flag.Bool("print-config", false, "打印脱敏配置后退出")
 	cfgKeys := flag.Bool("config-keys", false, "打印全部配置项变量名后退出")
+	serve := flag.Bool("serve", false, "启动 HTTP 服务（healthz/demo 观测端点）")
 	flag.Bool("version", false, "print version and exit")
 	flag.Parse()
 
@@ -41,6 +46,18 @@ func main() {
 		fmt.Println(config.Redacted(component, cfg))
 		return
 	}
-	fmt.Printf("gateway %s\n", version)
-	_ = cfg
+	if *serve {
+		provider := obs.Init(context.Background(), obs.Config{
+			Component:    component,
+			OTLPEndpoint: cfg.OTLPEndpoint,
+			SampleRatio:  cfg.SampleRatio,
+			LogLevel:     cfg.LogLevel,
+		})
+		if err := runServer(cfg, provider, version); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
+		return
+	}
+	fmt.Printf("%s %s\n", component, version)
 }

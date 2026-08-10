@@ -11,7 +11,14 @@
   无租户上下文标 `tenant_id: "-"`；禁打印凭据/客户数据原文）；
 - **依赖审批**（规则 8）：Go 侧 OTel SDK（`go.opentelemetry.io/otel` 系列）；Python 侧
   `structlog` + OTel SDK。**approve 本 spec 即完成审批**，理由见 §8 Q1/Q2/Q4；
-- **决策日期**：2026-08-09。
+- **决策日期**：2026-08-09；
+- **实施修订（2026-08-10）**：① 日志增 **OTLP 双出口**（stdout JSON + otelslog→Loki），
+  否则本地栈三信号缺日志一环；② redaction 从单 handler 钩子上移为 **record 级包装器**
+  ——obs-smoke 实证单 handler 方案下 Loki 分支泄漏；③ D5 演示端点挂 gateway
+  `--serve`（兼 spec-0.12 hello-world 载体）；④ Python 侧 OTel 导出延后至 spec-1.9
+  （skill 尚无服务进程），structlog 日志层 + 同步 redaction 清单先行；
+  ⑤ resource 用 NewSchemaless 合并（Default 的 semconv schema 版本冲突会静默
+  变成 unknown_service）。
 
 ## §1 范围
 

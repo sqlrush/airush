@@ -13,6 +13,7 @@ type testCfg struct {
 	DBURL    string        `env:"DB_URL"      required:"true" secret:"true"`
 	Timeout  time.Duration `env:"TIMEOUT"     default:"30s"`
 	Workers  int           `env:"WORKERS"     default:"4"`
+	Ratio    float64       `env:"RATIO"       default:"1.0"`
 }
 
 // T1：全量合法加载。
@@ -24,7 +25,7 @@ func TestLoadValid(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if cfg.Listen != ":8080" || cfg.LogLevel != "info" || cfg.Workers != 8 || cfg.Timeout != 30*time.Second {
+	if cfg.Listen != ":8080" || cfg.LogLevel != "info" || cfg.Workers != 8 || cfg.Timeout != 30*time.Second || cfg.Ratio != 1.0 {
 		t.Fatalf("unexpected cfg: %+v", cfg)
 	}
 }
@@ -145,7 +146,8 @@ func TestKeysListsAllEnvNames(t *testing.T) {
 	keys := Keys[testCfg]("testapp")
 	want := []string{
 		"AIRUSH_TESTAPP_DB_URL", "AIRUSH_TESTAPP_LISTEN_ADDR",
-		"AIRUSH_TESTAPP_LOG_LEVEL", "AIRUSH_TESTAPP_TIMEOUT", "AIRUSH_TESTAPP_WORKERS",
+		"AIRUSH_TESTAPP_LOG_LEVEL", "AIRUSH_TESTAPP_RATIO",
+		"AIRUSH_TESTAPP_TIMEOUT", "AIRUSH_TESTAPP_WORKERS",
 	}
 	if len(keys) != len(want) {
 		t.Fatalf("keys = %v, want %v", keys, want)

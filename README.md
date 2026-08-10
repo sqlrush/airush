@@ -13,6 +13,8 @@
 make doctor   # 检查工具链：Go 1.23+ / uv / Node 22 / pnpm
 make build    # 构建全部组件
 make test     # 全部单元测试
+make obs-up   # 本地观测栈（Grafana :3000，OTLP :4318）
+# 三信号冒烟：deploy/scripts/obs-smoke.sh（起 gateway → /demo → Tempo/Prom/Loki 断言）
 ```
 
 ## 文档导航
