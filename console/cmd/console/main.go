@@ -10,8 +10,13 @@ import (
 // version 由构建期 -ldflags 注入（spec-0.10/0.11 定版链路）。
 var version = "0.0.0-dev"
 
+// banner 组装启动横幅（spec-0.4 D5 范本的被测单元）。
+func banner(v string) string {
+	return "console " + v
+}
+
 func main() {
 	flag.Bool("version", false, "print version and exit")
 	flag.Parse()
-	fmt.Printf("console %s\n", version)
+	fmt.Println(banner(version))
 }
