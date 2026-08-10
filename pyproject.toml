@@ -1,5 +1,26 @@
 # uv workspace 虚拟根（spec-0.1 D3）：聚合 Python 包，自身不是可安装包。
-# lint/类型配置段随 spec-0.2 追加于此。
+# lint/类型配置（spec-0.2 D2）：全部 Python 包统一继承本文件，禁各包另立配置。
 
 [tool.uv.workspace]
 members = ["skills"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["skills"]
+extend-exclude = ["**/generated/**"]
+
+[tool.ruff.lint]
+# E/W=pycodestyle F=pyflakes I=isort UP=pyupgrade B=bugbear S=bandit（spec-0.2 §2.2）
+select = ["E", "F", "W", "I", "UP", "B", "S"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S101"] # 测试中 assert 是合法手段
+
+[tool.mypy]
+strict = true
+python_version = "3.12"
+files = ["skills"]
+exclude = ["generated"]
+# 第三方缺 stub 的库按模块显式豁免（禁全局关闭）；豁免数 >10 触发重估（spec-0.2 §6）
+# [[tool.mypy.overrides]] 段随真实依赖出现增补，当前为空。
