@@ -9,7 +9,10 @@ export PATH="/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:$HOME/.local/bin:$P
 # - ~/goroot 是给 Linux VM 用的工具链，共享 shell rc 会在【每条 make recipe 的
 #   shell 启动时】重新注入 GOROOT=~/goroot——wrapper 里 unset/export 全部无效；
 # - 唯一免疫机制层的做法：行内 env 前缀，在命令执行时刻覆盖 GOROOT/GOTOOLCHAIN。
-export GO="env GOROOT=/opt/homebrew/opt/go/libexec GOTOOLCHAIN=local /opt/homebrew/bin/go"
-export TOOL_ENV="env PATH=/opt/homebrew/opt/go/libexec/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin GOROOT=/opt/homebrew/opt/go/libexec GOTOOLCHAIN=local"
+# GOENV=off：屏蔽共享 ~/.config/go/env（含 -mod=mod 等 VM 侧设置）；
+# GOCACHE 钉 Mac 专属目录：共享 ~/.cache/go-build 会被跨架构产物污染（exec format error 元凶）。
+GO_PIN="GOFLAGS=-mod=readonly GOENV=off GOROOT=/opt/homebrew/opt/go/libexec GOTOOLCHAIN=local GOCACHE=$HOME/Library/Caches/airush-go-build"
+export GO="env $GO_PIN /opt/homebrew/bin/go"
+export TOOL_ENV="env PATH=/opt/homebrew/opt/go/libexec/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin $GO_PIN"
 cd /Users/sqlrush/airush
 exec make "$@"
