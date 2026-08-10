@@ -1,6 +1,6 @@
 # spec-0.12 Stage 0 验收
 
-> **DRAFT — 待 user approve**（Stage 0 分级预批：push 即可开工；**验收结论本身必须
+> **approved & shipped** — user 验收签署 2026-08-10（自动项 7/7 + 手工项全勾；原门槛：**验收结论本身必须
 > user 亲自确认**，见 §8 Q2——这是 Stage 1 的开工门槛，无预批例外）
 
 ## Header / 元数据

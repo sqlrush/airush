@@ -1,6 +1,6 @@
 # spec-0.6 控制面数据库 schema 与迁移框架
 
-> **DRAFT — 待 user approve**（Stage 0 分级预批：push 即可开工，user 异议后修改）
+> **approved & shipped** — Stage 0 验收签署 2026-08-10（分级预批流程，spec-0.12）
 
 ## Header / 元数据
 
