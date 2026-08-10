@@ -43,12 +43,18 @@ func TestMigrateLifecycleAndRLS(t *testing.T) {
 		t.Fatalf("idempotent up: %v", err)
 	}
 
-	// T2：down → 表消失；up → 回归
+	// T2：down = 回滚 1 步——先退 0002（tenants 仍在），再退 0001（tenants 消失）；up 全量回归
 	if err := RunWithURL(pg.ConnString, []string{"down"}); err != nil {
-		t.Fatalf("down: %v", err)
+		t.Fatalf("down 0002: %v", err)
+	}
+	if n := countRows(t, db, `SELECT count(*) FROM information_schema.tables WHERE table_name = 'tenants'`); n != 1 {
+		t.Fatalf("tenants table gone after single-step down (want it kept)")
+	}
+	if err := RunWithURL(pg.ConnString, []string{"down"}); err != nil {
+		t.Fatalf("down 0001: %v", err)
 	}
 	if n := countRows(t, db, `SELECT count(*) FROM information_schema.tables WHERE table_name = 'tenants'`); n != 0 {
-		t.Fatalf("tenants table still present after down")
+		t.Fatalf("tenants table still present after full down")
 	}
 	if err := RunWithURL(pg.ConnString, []string{"up"}); err != nil {
 		t.Fatalf("re-up: %v", err)
