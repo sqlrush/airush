@@ -14,6 +14,8 @@ export GOFLAGS := -mod=readonly
 #（golangci 等）在执行时刻钉住 PATH/GOROOT；默认为空（CI/常规环境无需）。
 GO ?= go
 TOOL_ENV ?=
+# 覆盖率阻断开关（spec-0.4 Q2）：make cover COVER_ENFORCE=1 生效，spec-1.1 起 CI 默认开
+export COVER_ENFORCE
 
 .PHONY: build build-go build-py build-fe test test-go test-py lint fmt clean doctor \
         $(GO_MODULES:%=%/build) $(GO_MODULES:%=%/test)
@@ -37,19 +39,41 @@ build-fe:
 	@echo "==> build frontend"
 	@cd frontend && pnpm install --silent && pnpm build
 
-## test: 全部单元测试
-test: test-go test-py
-	@echo "SKIP: frontend unit tests defined in spec-0.4"
+## test: 全部单元测试（-race 常开，spec-0.4 Q4）
+test: test-go test-py test-fe
 
 test-go:
 	@for m in $(GO_MODULES); do \
 		echo "==> test $$m"; \
-		(cd $$m && $(GO) test ./...) || exit 1; \
+		(cd $$m && $(GO) test -race ./...) || exit 1; \
 	done
 
 test-py:
 	@echo "==> test skills"
-	@uv run pytest -q skills/tests
+	@uv run pytest -q
+
+test-fe:
+	@echo "==> test frontend"
+	@cd frontend && pnpm run test
+
+## cover: 测试 + 覆盖率（报告恒出；阈值阻断由 COVER_ENFORCE=1 激活，spec-1.1 起 CI 默认开）
+cover: cover-go cover-py cover-fe
+
+cover-go:
+	@mkdir -p bin/cover
+	@for m in $(GO_MODULES); do \
+		echo "==> cover $$m"; \
+		(cd $$m && $(GO) test -race -covermode=atomic -coverprofile=../bin/cover/$$m.out ./...) || exit 1; \
+	done
+	@deploy/scripts/coverage-gate.sh
+
+cover-py:
+	@echo "==> cover skills"
+	@uv run pytest -q --cov=airush_skills --cov-report=term $${COVER_ENFORCE:+--cov-fail-under=80}
+
+cover-fe:
+	@echo "==> cover frontend"
+	@cd frontend && pnpm run test:cover
 
 # golangci-lint 版本唯一钉点（spec-0.2 Q1）：go install 到带版本号的本地路径，
 # 本地与 CI 同版；bootstrap 阶段清空 GOFLAGS（工具安装不受 workspace/-mod 影响）。

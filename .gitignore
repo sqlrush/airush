@@ -18,7 +18,10 @@ __pycache__/
 *.pyc
 .venv/
 /bin/
-coverage*
+coverage/
+.coverage
+coverage.xml
+*.coverprofile
 *.tsbuildinfo
 .pytest_cache/
 .ruff_cache/
