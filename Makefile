@@ -5,6 +5,10 @@
 SHELL := /bin/bash
 GO_MODULES := console connector gateway agent-runtime
 
+# 本仓库使用 go.work 工作区；强制 -mod=readonly，避免用户全局 -mod=mod 与
+# workspace 模式冲突（workspace 下 -mod 仅允许 readonly/vendor）。
+export GOFLAGS := -mod=readonly
+
 .PHONY: build build-go build-py build-fe test test-go test-py lint fmt clean doctor \
         $(GO_MODULES:%=%/build) $(GO_MODULES:%=%/test)
 
