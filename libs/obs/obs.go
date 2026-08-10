@@ -43,7 +43,7 @@ type Provider struct {
 // Init 初始化三件套并把 slog 默认 logger 替换为带必带字段的实例。
 func Init(ctx context.Context, cfg Config) *Provider {
 	p := &Provider{}
-	var handler slog.Handler = stdoutHandler(cfg)
+	handler := stdoutHandler(cfg)
 
 	if cfg.OTLPEndpoint != "" {
 		handler = p.initLogExport(ctx, cfg, handler)

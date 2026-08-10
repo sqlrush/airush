@@ -80,8 +80,10 @@ func TestInitDegradesGracefully(t *testing.T) {
 	if p1 == nil || p1.Logger == nil {
 		t.Fatal("logs-only init failed")
 	}
-	p2 := Init(ctx, Config{Component: "t", LogLevel: "info",
-		OTLPEndpoint: "127.0.0.1:1", SampleRatio: 1})
+	p2 := Init(ctx, Config{
+		Component: "t", LogLevel: "info",
+		OTLPEndpoint: "127.0.0.1:1", SampleRatio: 1,
+	})
 	if p2 == nil || p2.Logger == nil {
 		t.Fatal("bogus endpoint init should still return provider")
 	}

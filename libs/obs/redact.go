@@ -12,9 +12,9 @@ import (
 var redactPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)(password|passwd|pwd)=[^\s&"']+`),
 	regexp.MustCompile(`(?i)bearer\s+[A-Za-z0-9._\-]+`),
-	regexp.MustCompile(`AKIA[0-9A-Z]{16}`),                    // AWS access key
+	regexp.MustCompile(`AKIA[0-9A-Z]{16}`),                             // AWS access key
 	regexp.MustCompile(`(?i)(sk|ghp|gho|xox[bp])-[A-Za-z0-9\-_]{16,}`), // 常见 API token 前缀
-	regexp.MustCompile(`postgres(ql)?://[^:\s]+:[^@\s]+@`),    // 连接串内嵌口令
+	regexp.MustCompile(`postgres(ql)?://[^:\s]+:[^@\s]+@`),             // 连接串内嵌口令
 }
 
 const redactedMark = "***REDACTED***"
