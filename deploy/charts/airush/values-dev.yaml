@@ -1,0 +1,18 @@
+# kind 本地环境（spec-0.10 D4）：资源整体缩减、镜像用 kind load 的本地 latest
+image:
+  tag: latest
+  pullPolicy: Never
+gateway:
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 256Mi }
+storage:
+  builtin: true
+  pg:
+    resources:
+      requests: { cpu: 250m, memory: 256Mi }
+      limits: { cpu: "1", memory: 512Mi }
+  redis:
+    resources:
+      requests: { cpu: 50m, memory: 64Mi }
+      limits: { cpu: 250m, memory: 128Mi }

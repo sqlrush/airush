@@ -10,7 +10,15 @@
   `docs/k8s-scaling-design.md` §1（伸缩矩阵）、§1.1（存储按环境形态）、§2.3（护栏）、
   §3（Stage 0 落地项：HPA 基线 + requests/limits + PDB 进 chart 模板）；
 - **本 spec 定版内容**：k8s-scaling-design 悬置的 **requests/limits 基线数值**（§2.3）；
-- **决策日期**：2026-08-09。
+- **决策日期**：2026-08-09；
+- **实施修订（2026-08-10）**：① Q2 的 subchart 形态收敛为**单 chart + 组件命名空间
+  values**——当前仅 2 个可部署服务，subchart 是纯开销；服务达 4+ 时按既有 values
+  结构拆分，接口不变；② migrate hook 时序条件化：外部 dbUrl=pre-install/upgrade
+  门闩，内置存储=post-install/upgrade（PG 属主资源，pre 阶段不存在——鸡生蛋）；
+  ③ console 无常驻模式，chart 仅出 migrate Job（Deployment 随 spec-1.1）；
+  connector 为客户侧组件不入平台 chart；agent-runtime/skills/frontend 模板随
+  对应 spec 添加；④ Helm 4.2 实测兼容；⑤ dev-verify.sh 为 spec-0.12 验收复用件；
+  ⑥ 镜像体积基线：console 19.4MB / gateway 27.4MB / frontend 77.6MB / skills 222MB。
 
 ## §1 范围
 
