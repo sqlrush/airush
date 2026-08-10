@@ -12,7 +12,15 @@
 - **决策日期**：2026-08-09；
 - **评审点（2026-08-10 user 定）**：本 spec D4 首批迁移的表结构，以及后续一切 PG 建模
   （spec-1.1 领域表、spec-1.8 threadstore 会话/上下文表等），**实施前须与 user 逐表过
-  一遍设计**——此评审不受 Stage 0 分级预批豁免。
+  一遍设计**——此评审不受 Stage 0 分级预批豁免；
+- **评审记录**：2026-08-10 user 会话评审通过——tenants 表（含 slug、status 文本+CHECK、
+  timestamptz/UTC、updated_at 应用层维护）与 RLS 基建（airush_app NOLOGIN、SET LOCAL、
+  fail-closed）；spec-1.1 领域表（connectors/datasources/credentials/groups/aliases/agents
+  简表）设计一并冻结，实施仍归 spec-1.1；
+- **依赖审批**（规则 8）：Go：`golang-migrate/migrate/v4`（iofs+pgx5 驱动）；
+  `jackc/pgx/v5` 已于 spec-0.5 审批。approve 本 spec 即完成审批；
+- **实施修订（2026-08-10）**：§3/T8 的"校验和由工具强制"更正——golang-migrate 无内建
+  校验和，迁移不可变性改由 CI git-diff 检查强制（已合并迁移文件被修改/删除即红）。
 
 ## §1 范围
 
@@ -64,7 +72,10 @@ CREATE TABLE <name> (
 ALTER TABLE <name> ENABLE ROW LEVEL SECURITY;      -- ②
 ALTER TABLE <name> FORCE  ROW LEVEL SECURITY;      -- ③ owner 亦不可绕过
 CREATE POLICY tenant_isolation ON <name>
-  USING (tenant_id = current_setting('app.tenant_id')::uuid);  -- ④
+  USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);  -- ④
+  -- missing_ok=true：变量从未设置返回 NULL；NULLIF 兜住连接复用后 GUC 退化为
+  -- 空字符串的情形（SET LOCAL 事务结束后自定义 GUC 值为 ''，直接 ::uuid 会报错）。
+  -- 两种"未设置"形态均判 false → 0 行 fail-closed（实施修订 2026-08-10，集成测试实证）
 ```
 
 - 应用一律以 `airush_app`（非 owner）连接；每连接/事务先 `SET app.tenant_id`；

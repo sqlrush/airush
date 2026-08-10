@@ -94,6 +94,12 @@ jobs:
       - name: markdown link check
         if: needs.changes.outputs.docs == 'true'
         run: deploy/scripts/check-md-links.sh
+      - name: migration guards
+        if: needs.changes.outputs.go == 'true' || github.event_name == 'push'
+        run: |
+          deploy/scripts/check-migration-seq.sh
+          git fetch --no-tags --depth=50 origin main
+          deploy/scripts/check-migration-immutable.sh origin/main
 
   test:
     name: ci/test
