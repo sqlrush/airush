@@ -198,7 +198,7 @@ SPEC（编码前讨论） → TDD 编码 → 集成测试 → Code Review → Re
 | spec-0.7 | DRAFT · **已实施**（T1-T8 过；自研薄层替代 caarlos0/env，见 spec 修订） | 2026-08-09 起草；08-10 实施完成 |
 | spec-0.8 | DRAFT · **已实施**（T1-T8 过；15 码 JSON SSOT 双语言生成；apierror 覆盖率 94.6%） | 2026-08-09 起草；08-10 实施完成 |
 | spec-0.9 | DRAFT · **已实施**（T1-T8 过；三信号冒烟脚本全绿含双出口脱敏实证；libs/obs 覆盖率 82.7%） | 2026-08-09 起草；08-10 实施完成 |
-| spec-0.10 | DRAFT（预批可开工） | 2026-08-09 |
+| spec-0.10 | DRAFT · **已实施**（dev-up 一键全栈 + DEV VERIFY ALL PASS；Go 镜像 <30MB 达标） | 2026-08-09 起草；08-10 实施完成 |
 | spec-0.11 | DRAFT（预批可开工） | 2026-08-09 |
 | spec-0.12 | DRAFT（验收结论须 user 签署） | 2026-08-09 |
 | Stage 1 specs | Stage 0 验收通过后起草（严格事前 approve） | — |
