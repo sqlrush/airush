@@ -17,5 +17,6 @@
 | [spec-0.10](spec-0.10-image-helm-skeleton.md) | 镜像构建与 Helm chart 骨架 | shipped | 2026-08-10 | 2026-08-10 |
 | [spec-0.11](spec-0.11-versioning-release.md) | 版本号与 release 节奏 | shipped | 2026-08-10 | 2026-08-10 |
 | [spec-0.12](spec-0.12-stage0-acceptance.md) | Stage 0 验收 | shipped | 2026-08-10 | 2026-08-10 |
+| [spec-1.1](spec-1.1-domain-model-api.md) | 控制面领域模型与 API 骨架 | DRAFT · 待 approve | — | — |
 
 完整规划清单见 `docs/development-roadmap.md` 第 2-4 节；spec 文件在进入起草时才创建。
