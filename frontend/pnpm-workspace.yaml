@@ -1,0 +1,4 @@
+# pnpm 11：依赖构建脚本白名单（声明式入库，替代交互式 approve-builds）。
+# esbuild 安装期需写入平台二进制，予以放行；新增项须 review 论证。
+allowBuilds:
+  esbuild: true
