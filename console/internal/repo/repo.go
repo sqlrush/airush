@@ -14,7 +14,11 @@ import (
 	"github.com/sqlrush/airush/libs/apierror"
 )
 
-// Store 持有连接池；构造经 New，业务方法按域挂在 Store 上（datasources.go 等）。
+// Tx 是租户事务句柄的对外别名：httpapi 经它调用本包查询函数而不 import pgx
+// （depguard console-httpapi-no-direct-db 的配套出口）。
+type Tx = pgx.Tx
+
+// Store 持有连接池；构造经 New，查询函数按域分文件（datasources.go 等）。
 type Store struct {
 	pool *pgxpool.Pool
 }
