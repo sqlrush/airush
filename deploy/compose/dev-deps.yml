@@ -1,0 +1,26 @@
+# spec-0.5 D1：人肉调试长驻依赖栈（psql/redis-cli 手工连）。
+# 双轨约定（spec-0.5 §2.1）：自动化测试一律 testcontainers 自管，禁止连接本栈。
+# 版本与 testkit 镜像常量保持一致，升级需修订 spec-0.5。
+name: airush-dev-deps
+services:
+  postgres:
+    image: postgres:16.6
+    environment:
+      POSTGRES_PASSWORD: airush_dev # 仅本地调试栈，非 secret
+      POSTGRES_DB: airush
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  redis:
+    image: redis:7.4
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
