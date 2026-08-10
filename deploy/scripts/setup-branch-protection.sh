@@ -10,7 +10,7 @@ gh api -X PUT "repos/$REPO/branches/main/protection" \
 {
   "required_status_checks": {
     "strict": true,
-    "contexts": ["ci/lint", "ci/test", "ci/build", "security/gitleaks"]
+    "contexts": ["ci/lint", "ci/test", "ci/build", "ci/integration", "security/gitleaks"]
   },
   "enforce_admins": true,
   "required_pull_request_reviews": null,
