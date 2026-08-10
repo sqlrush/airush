@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-08-10
+
 ### Added
 
 - monorepo 脚手架与三语言构建体系：Go workspace 四组件、Python uv workspace、前端 Vite（spec-0.1）

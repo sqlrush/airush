@@ -1,6 +1,6 @@
 # spec-0.1 monorepo 脚手架与构建体系
 
-> **DRAFT — 待 user approve**
+> **approved & shipped** — Stage 0 验收签署 2026-08-10（分级预批流程，spec-0.12）
 
 ## Header / 元数据
 
