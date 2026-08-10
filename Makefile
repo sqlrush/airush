@@ -90,8 +90,8 @@ $(GOLANGCI):
 	GOFLAGS= GOBIN=$(TOOLS_BIN) $(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION)
 	@mv $(TOOLS_BIN)/golangci-lint $(GOLANGCI)
 
-## lint: 三语言全量（spec-0.2 实装）
-lint: lint-go lint-py lint-fe
+## lint: 三语言全量（spec-0.2 实装）+ 迁移编号检查（spec-0.6）
+lint: lint-go lint-py lint-fe migrate-check
 
 lint-go: $(GOLANGCI)
 	@for m in $(GO_ALL); do \
@@ -133,6 +133,14 @@ integration-test-go: docker-check
 integration-test-py: docker-check
 	@echo "==> integration skills"
 	@uv run pytest -q -m integration
+
+## migrate-new: 生成下一编号迁移文件对（spec-0.6 D2）
+migrate-new:
+	@test -n "$(name)" || { echo "用法: make migrate-new name=<snake_case>"; exit 2; }
+	@deploy/scripts/migrate-new.sh "$(name)"
+
+migrate-check:
+	@deploy/scripts/check-migration-seq.sh
 
 ## dev-deps: 人肉调试长驻依赖栈（自动化测试禁用，见 spec-0.5 §2.1）
 dev-deps-up:
