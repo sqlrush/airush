@@ -7,6 +7,10 @@ on:
   schedule:
     - cron: "30 20 * * *" # 每日 04:30 CST
 
+permissions:
+  contents: read
+  pull-requests: read # gitleaks-action 需读 PR commits 列表
+
 jobs:
   gitleaks:
     name: security/gitleaks
@@ -28,7 +32,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.26"
-          cache-dependency-path: "**/go.sum"
+          cache-dependency-path: go.work
       - uses: astral-sh/setup-uv@v5
       - uses: pnpm/action-setup@v4
         with:

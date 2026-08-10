@@ -105,6 +105,7 @@ main: lint+test+build（全量）──▶ image（按组件矩阵，Dockerfile 
 | 缓存污染导致构建结果不一致 | 低 | cache key 含 lockfile hash；怀疑污染时手动 bump key 前缀 |
 | ghcr 镜像拉取在国内网络慢（影响后续部署体验） | 中 | Stage 0 仅推送不依赖拉取；国内镜像同步（ACR）列入 spec-4.5 私有化议题 |
 | required check 改名导致合并规则失效 | 低 | §2.3 定版名称，改名需修订本 spec 并重放 D3 脚本 |
+| **GitHub Free 计划私有仓不支持分支保护**（实施时发现，2026-08-10） | 已发生 | D3 脚本就绪且幂等（API 403）；生效需 user 决策：升级 Pro / 仓库转 public / 暂以约定式流程（全部变更走 PR + 检查全绿再合并，由研发纪律约束）执行；T3 在决策前无法达成 |
 
 ## §7 DoD
 
