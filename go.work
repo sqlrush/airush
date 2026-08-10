@@ -7,4 +7,5 @@ use (
 	./agent-runtime
 	./testkit
 	./libs/config
+	./libs/apierror
 )
