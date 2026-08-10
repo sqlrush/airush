@@ -193,7 +193,7 @@ SPEC（编码前讨论） → TDD 编码 → 集成测试 → Code Review → Re
 | spec-0.2 | DRAFT · **已实施**（T1-T7 全过，含注入验证） | 2026-08-09 起草；08-10 实施完成 |
 | spec-0.3 | DRAFT · **已实施**（T1/T2/T4-T7 过；T3 分支保护受 GitHub Free 限制，待 user 决策 Pro/public/约定式） | 2026-08-09 起草；08-10 实施完成 |
 | spec-0.4 | DRAFT · **已实施**（T1-T7 过；阻断开关 COVER_ENFORCE 留待 spec-1.1 打开） | 2026-08-09 起草；08-10 实施完成 |
-| spec-0.5 | DRAFT（预批可开工） | 2026-08-09 |
+| spec-0.5 | DRAFT · **已实施**（T1-T7 过；ci/integration 入 required checks） | 2026-08-09 起草；08-10 实施完成 |
 | spec-0.6 | DRAFT（预批可开工） | 2026-08-09 |
 | spec-0.7 | DRAFT（预批可开工） | 2026-08-09 |
 | spec-0.8 | DRAFT（预批可开工） | 2026-08-09 |

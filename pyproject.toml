@@ -20,6 +20,9 @@ select = ["E", "F", "W", "I", "UP", "B", "S"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto" # async 用例免装饰器（spec-0.4 D2）
 testpaths = ["skills/tests"]
+# 集成用例默认排除（spec-0.5 D3）；显式 -m integration 才执行（需 docker）
+addopts = "-m 'not integration'"
+markers = ["integration: 需要 docker 的集成用例（make integration-test 执行）"]
 
 [tool.coverage.report]
 show_missing = true

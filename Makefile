@@ -4,6 +4,8 @@
 
 SHELL := /bin/bash
 GO_MODULES := console connector gateway agent-runtime
+# GO_ALL 含非组件模块（testkit 等）：参与 lint/test/cover，不产二进制
+GO_ALL := $(GO_MODULES) testkit
 
 # 本仓库使用 go.work 工作区；强制 -mod=readonly，避免用户全局 -mod=mod 与
 # workspace 模式冲突（workspace 下 -mod 仅允许 readonly/vendor）。
@@ -29,6 +31,8 @@ build-go:
 		echo "==> build $$m"; \
 		(cd $$m && $(GO) build -o ../bin/$$m ./cmd/$$m) || exit 1; \
 	done
+	@echo "==> build testkit (compile check)"
+	@cd testkit && $(GO) build ./...
 
 build-py:
 	@echo "==> build skills (uv sync + import check)"
@@ -43,7 +47,7 @@ build-fe:
 test: test-go test-py test-fe
 
 test-go:
-	@for m in $(GO_MODULES); do \
+	@for m in $(GO_ALL); do \
 		echo "==> test $$m"; \
 		(cd $$m && $(GO) test -race ./...) || exit 1; \
 	done
@@ -61,7 +65,7 @@ cover: cover-go cover-py cover-fe
 
 cover-go:
 	@mkdir -p bin/cover
-	@for m in $(GO_MODULES); do \
+	@for m in $(GO_ALL); do \
 		echo "==> cover $$m"; \
 		(cd $$m && $(GO) test -race -covermode=atomic -coverprofile=../bin/cover/$$m.out ./...) || exit 1; \
 	done
@@ -90,7 +94,7 @@ $(GOLANGCI):
 lint: lint-go lint-py lint-fe
 
 lint-go: $(GOLANGCI)
-	@for m in $(GO_MODULES); do \
+	@for m in $(GO_ALL); do \
 		echo "==> lint $$m"; \
 		(cd $$m && $(TOOL_ENV) $(GOLANGCI) run ./...) || exit 1; \
 	done
@@ -107,9 +111,36 @@ lint-fe:
 
 ## fmt: 分域格式化（Go=gofumpt+gci 经 golangci fmt；Py=ruff；FE=prettier），幂等
 fmt: $(GOLANGCI)
-	@for m in $(GO_MODULES); do (cd $$m && $(TOOL_ENV) $(GOLANGCI) fmt ./...); done
+	@for m in $(GO_ALL); do (cd $$m && $(TOOL_ENV) $(GOLANGCI) fmt ./...); done
 	@uv run ruff format .
 	@cd frontend && pnpm run format
+
+## integration-test: 集成测试（必须 docker，规则 6 禁静默跳过）
+integration-test: integration-test-go integration-test-py
+
+docker-check:
+	@docker info >/dev/null 2>&1 || { \
+		echo "ERROR: docker 不可用——集成测试必须 docker。"; \
+		echo "  Mac: 启动 OrbStack；Linux: 安装 docker 并加入 docker 组。"; \
+		exit 2; }
+
+integration-test-go: docker-check
+	@for m in $(GO_ALL); do \
+		echo "==> integration $$m"; \
+		(cd $$m && $(GO) test -race -tags integration ./...) || exit 1; \
+	done
+
+integration-test-py: docker-check
+	@echo "==> integration skills"
+	@uv run pytest -q -m integration
+
+## dev-deps: 人肉调试长驻依赖栈（自动化测试禁用，见 spec-0.5 §2.1）
+dev-deps-up:
+	@docker compose -f deploy/compose/dev-deps.yml up -d --wait
+	@echo "dev-deps ready: postgres :5432 / redis :6379"
+
+dev-deps-down:
+	@docker compose -f deploy/compose/dev-deps.yml down -v
 
 clean:
 	@rm -rf bin frontend/dist

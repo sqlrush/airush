@@ -8,6 +8,9 @@
   spec-0.4（测试骨架与组织约定）；首个真实消费方是 spec-0.6（迁移框架的集成验证）；
 - **关联文档**：`docs/development-standards.md` §2（Go 集成测试 build tag 约定）；
   CLAUDE.md 规则 4（集成测试覆盖核心路径）、规则 6（禁静默跳过）；
+- **依赖审批**（规则 8，实施补记 2026-08-10）：Go：`testcontainers-go v0.44`（含
+  postgres/redis modules）、`jackc/pgx/v5`（冒烟驱动，亦是 Stage 1 PG 协议族的既定
+  驱动选型）；Python：`testcontainers[redis]`（dev group）。approve 本 spec 即完成审批；
 - **决策日期**：2026-08-09。
 
 ## §1 范围

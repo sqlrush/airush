@@ -133,6 +133,28 @@ jobs:
         if: needs.changes.outputs.fe == 'true' || github.event_name == 'push'
         run: make cover-fe
 
+  integration:
+    name: ci/integration
+    needs: changes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        if: needs.changes.outputs.go == 'true' || github.event_name == 'push'
+        with:
+          go-version: "1.26"
+          cache-dependency-path: go.work
+      - uses: astral-sh/setup-uv@v5
+        if: needs.changes.outputs.py == 'true' || github.event_name == 'push'
+        with:
+          enable-cache: true
+      - name: integration go
+        if: needs.changes.outputs.go == 'true' || github.event_name == 'push'
+        run: make integration-test-go
+      - name: integration python
+        if: needs.changes.outputs.py == 'true' || github.event_name == 'push'
+        run: make integration-test-py
+
   build:
     name: ci/build
     needs: changes

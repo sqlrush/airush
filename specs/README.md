@@ -9,7 +9,7 @@
 | [spec-0.2](spec-0.2-lint-and-style.md) | 代码风格与 lint | DRAFT · 已实施（T1-T7 过） | — | — |
 | [spec-0.3](spec-0.3-ci-pipeline.md) | CI/CD pipeline | DRAFT · 已实施（T3 待分支保护决策） | — | — |
 | [spec-0.4](spec-0.4-unit-test-framework.md) | 单元测试框架与覆盖率门槛 | DRAFT · 已实施（阻断待 spec-1.1 激活） | — | — |
-| [spec-0.5](spec-0.5-integration-test-framework.md) | 集成测试框架 | DRAFT（预批可开工） | — | — |
+| [spec-0.5](spec-0.5-integration-test-framework.md) | 集成测试框架 | DRAFT · 已实施 | — | — |
 | [spec-0.6](spec-0.6-db-schema-migration.md) | 控制面 DB schema 与迁移框架 | DRAFT（预批可开工） | — | — |
 | [spec-0.7](spec-0.7-config-framework.md) | 配置框架 | DRAFT（预批可开工） | — | — |
 | [spec-0.8](spec-0.8-error-codes.md) | 错误码与 API 错误规范 | DRAFT（预批可开工） | — | — |
