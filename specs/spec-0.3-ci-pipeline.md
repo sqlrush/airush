@@ -64,7 +64,9 @@ main: lint+test+build（全量）──▶ image（按组件矩阵，Dockerfile 
 ### §2.3 关键约定
 
 - CI 步骤只允许调用 `make <target>`，禁止在 yml 里内联构建命令（保证本地=CI）；
-- required checks 名称 `ci/lint`、`ci/test`、`ci/build` 定版——改名=破坏分支保护，需修订本 spec；
+- required checks 名称 `ci/lint`、`ci/test`、`ci/build`、`security/gitleaks` 定版
+  （实施修订 2026-08-10：gitleaks 必须入 required 才能兑现 §3"PR 阻断"契约）——
+  改名=破坏分支保护，需修订本 spec；
 - secrets 仅 `GITHUB_TOKEN`（ghcr 推送用），无其他 secret；出现新 secret 需求走规则 5 硬门槛。
 
 ## §3 行为契约
