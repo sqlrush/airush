@@ -191,4 +191,5 @@ SPEC（编码前讨论） → TDD 编码 → 集成测试 → Code Review → Re
 | spec-0.9 | DRAFT（预批可开工） | 2026-08-09 |
 | spec-0.10 | DRAFT（预批可开工） | 2026-08-09 |
 | spec-0.11 | DRAFT（预批可开工） | 2026-08-09 |
-| （其余待起草） | — | — |
+| spec-0.12 | DRAFT（验收结论须 user 签署） | 2026-08-09 |
+| Stage 1 specs | Stage 0 验收通过后起草（严格事前 approve） | — |
