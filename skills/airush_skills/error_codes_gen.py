@@ -16,4 +16,11 @@ ERROR_CODES: dict[str, dict[str, object]] = {
     "AR_UPSTREAM_LLM_FAILED": {"level": "E5", "http": 502, "message": "模型服务暂不可用，请稍后重试", "deprecated": False},
     "AR_UPSTREAM_CONNECTOR_OFFLINE": {"level": "E5", "http": 503, "message": "数据源接入器离线，请检查 Connector 状态", "deprecated": False},
     "AR_QUOTA_EXCEEDED": {"level": "E6", "http": 429, "message": "请求超出配额限制，请稍后重试", "deprecated": False},
+    "AR_DATASOURCE_NOT_FOUND": {"level": "E3", "http": 404, "message": "数据源不存在", "deprecated": False},
+    "AR_DATASOURCE_NAME_CONFLICT": {"level": "E3", "http": 409, "message": "数据源名称已存在", "deprecated": False},
+    "AR_DATASOURCE_MODE_MISMATCH": {"level": "E1", "http": 400, "message": "接入模式与连接配置不匹配", "deprecated": False},
+    "AR_DATASOURCE_IN_USE": {"level": "E3", "http": 409, "message": "数据源正被引用，无法删除", "deprecated": False},
+    "AR_AGENT_NOT_FOUND": {"level": "E3", "http": 404, "message": "智能体不存在", "deprecated": False},
+    "AR_ALIAS_CONFLICT": {"level": "E3", "http": 409, "message": "别名已被占用", "deprecated": False},
+    "AR_IDEMPOTENCY_REPLAY": {"level": "E1", "http": 409, "message": "幂等键已用于不同的请求", "deprecated": False},
 }

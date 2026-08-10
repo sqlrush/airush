@@ -26,6 +26,14 @@ linters:
               desc: 跨组件禁止直接 import（走 proto/API，见 decoupling-architecture §2.2）
             - pkg: github.com/sqlrush/airush/agent-runtime
               desc: 跨组件禁止直接 import（走 proto/API，见 decoupling-architecture §2.2）
+        # spec-1.1 §3：httpapi 禁直连 DB，一切租户数据访问必须走 internal/repo 基座
+        # （事务内 SET LOCAL app.tenant_id 是 RLS 的应用层执行路径，绕过 = 架构违规）。
+        console-httpapi-no-direct-db:
+          files:
+            - "**/console/internal/httpapi/**"
+          deny:
+            - pkg: github.com/jackc/pgx
+              desc: httpapi 禁止直接使用 pgx，数据访问走 internal/repo（spec-1.1 §3）
     revive:
       rules:
         - name: function-length
