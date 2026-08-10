@@ -1,0 +1,51 @@
+# spec-0.10 D3：资源基线默认值 = spec-0.10 §2.3（生产口径）；kind 用 values-dev 覆盖。
+image:
+  registry: ghcr.io/sqlrush/airush
+  tag: latest
+  pullPolicy: IfNotPresent
+
+common:
+  otlpEndpoint: ""          # 空 = 纯日志模式
+  traceSampleRatio: "1.0"
+  logLevel: info
+
+# console：API 服务随 spec-1.1 实装后 enabled；当前仅 migrate hook 消费其镜像
+console:
+  enabled: false
+  replicas: 1
+  resources:
+    requests: { cpu: 250m, memory: 256Mi }
+    limits: { cpu: "1", memory: 1Gi }
+  # 控制面 PG 连接串；空且 storage.builtin=true 时自动指向内置 PG
+  dbUrl: ""
+  migrate:
+    enabled: true
+
+gateway:
+  enabled: true
+  replicas: 1
+  listen: ":8081"
+  resources:
+    requests: { cpu: 500m, memory: 512Mi }
+    limits: { cpu: "2", memory: 1Gi }
+
+# 其余组件槽位（模板随对应 spec 添加，见 spec-0.10 实施修订）：
+# agent-runtime → spec-1.8；skills → spec-1.9；frontend → spec-1.13；
+# connector 为客户侧组件，不入平台 chart。
+
+storage:
+  # 本地部署主形态默认内置（k8s-scaling-design §1.1，2026-08-10 调整）；
+  # 云 SaaS 形态置 false 并显式配置 console.dbUrl
+  builtin: true
+  pg:
+    image: postgres:16.6
+    password: airush-dev-pg # 仅内置开发/本地形态；生产凭据经部署侧 Secret 管理
+    storage: 1Gi
+    resources:
+      requests: { cpu: "1", memory: 1Gi }
+      limits: { cpu: "2", memory: 2Gi }
+  redis:
+    image: redis:7.4
+    resources:
+      requests: { cpu: 250m, memory: 256Mi }
+      limits: { cpu: "1", memory: 1Gi }

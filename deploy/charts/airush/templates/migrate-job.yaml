@@ -1,0 +1,56 @@
+{{- if .Values.console.migrate.enabled }}
+{{- if or .Values.storage.builtin .Values.console.dbUrl }}
+# spec-0.10 D5：迁移执行（spec-0.6 Q3 部署期单点）。
+# hook 时序（实施修订）：外部 dbUrl（云/生产）= pre-install/upgrade 门闩，失败即中止发布；
+# 内置存储 = post-install/upgrade（PG 属主资源，pre 阶段尚不存在——鸡生蛋问题），
+# 当前无 DB 消费方服务（console API 未启用），post 语义安全。
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-migrate
+  labels:
+    {{- include "airush.labels" . | nindent 4 }}
+  annotations:
+    {{- if .Values.console.dbUrl }}
+    "helm.sh/hook": pre-install,pre-upgrade
+    {{- else }}
+    "helm.sh/hook": post-install,post-upgrade
+    {{- end }}
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        {{- include "airush.selector" "migrate" | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      {{- if not .Values.console.dbUrl }}
+      initContainers:
+        - name: wait-pg
+          image: {{ .Values.storage.pg.image }}
+          command: ["sh", "-c", "until pg_isready -h {{ .Release.Name }}-pg -U postgres; do sleep 2; done"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 999
+      {{- end }}
+      containers:
+        - name: migrate
+          image: "{{ .Values.image.registry }}/console:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["migrate", "up"]
+          env:
+            - name: AIRUSH_ENV
+              value: production
+            - name: AIRUSH_CONSOLE_DB_URL
+              {{- if .Values.console.dbUrl }}
+              value: {{ .Values.console.dbUrl | quote }}
+              {{- else }}
+              value: {{ include "airush.builtinPgUrl" . | quote }}
+              {{- end }}
+          securityContext:
+            {{- include "airush.securityContext" . | nindent 12 }}
+{{- end }}
+{{- end }}
