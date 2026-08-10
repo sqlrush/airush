@@ -1,0 +1,181 @@
+# spec-0.3 D1：主 CI。约定（§2.3）：步骤只调 make，禁内联构建命令；
+# required checks 名称 ci/lint、ci/test、ci/build 定版，改名=破坏分支保护。
+# path filter 仅在 PR 生效（增量），push main 恒全量兜底。
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    outputs:
+      go: ${{ steps.f.outputs.go }}
+      py: ${{ steps.f.outputs.py }}
+      fe: ${{ steps.f.outputs.fe }}
+      docs: ${{ steps.f.outputs.docs }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: f
+        with:
+          filters: |
+            go:
+              - 'console/**'
+              - 'connector/**'
+              - 'gateway/**'
+              - 'agent-runtime/**'
+              - 'go.work'
+              - '.golangci.yml'
+              - 'Makefile'
+              - '.github/**'
+            py:
+              - 'skills/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
+              - 'Makefile'
+              - '.github/**'
+            fe:
+              - 'frontend/**'
+              - '.prettierrc'
+              - 'Makefile'
+              - '.github/**'
+            docs:
+              - '**/*.md'
+
+  lint:
+    name: ci/lint
+    needs: changes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        if: needs.changes.outputs.go == 'true' || github.event_name == 'push'
+        with:
+          go-version: "1.26"
+          cache-dependency-path: '**/go.sum'
+      - uses: astral-sh/setup-uv@v5
+        if: needs.changes.outputs.py == 'true' || github.event_name == 'push'
+        with:
+          enable-cache: true
+      - uses: pnpm/action-setup@v4
+        if: needs.changes.outputs.fe == 'true' || github.event_name == 'push'
+        with:
+          package_json_file: frontend/package.json
+      - uses: actions/setup-node@v4
+        if: needs.changes.outputs.fe == 'true' || github.event_name == 'push'
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: lint go
+        if: needs.changes.outputs.go == 'true' || github.event_name == 'push'
+        run: make lint-go
+      - name: lint python
+        if: needs.changes.outputs.py == 'true' || github.event_name == 'push'
+        run: make lint-py
+      - name: install frontend deps
+        if: needs.changes.outputs.fe == 'true' || github.event_name == 'push'
+        run: cd frontend && pnpm install --frozen-lockfile
+      - name: lint frontend
+        if: needs.changes.outputs.fe == 'true' || github.event_name == 'push'
+        run: make lint-fe
+      - name: markdown link check
+        if: needs.changes.outputs.docs == 'true'
+        run: deploy/scripts/check-md-links.sh
+
+  test:
+    name: ci/test
+    needs: changes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        if: needs.changes.outputs.go == 'true' || github.event_name == 'push'
+        with:
+          go-version: "1.26"
+          cache-dependency-path: '**/go.sum'
+      - uses: astral-sh/setup-uv@v5
+        if: needs.changes.outputs.py == 'true' || github.event_name == 'push'
+        with:
+          enable-cache: true
+      - name: test go
+        if: needs.changes.outputs.go == 'true' || github.event_name == 'push'
+        run: make test-go
+      - name: test python
+        if: needs.changes.outputs.py == 'true' || github.event_name == 'push'
+        run: make test-py
+
+  build:
+    name: ci/build
+    needs: changes
+    runs-on: ubuntu-latest
+    outputs:
+      dockerfiles: ${{ steps.detect.outputs.present }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        if: needs.changes.outputs.go == 'true' || github.event_name == 'push'
+        with:
+          go-version: "1.26"
+          cache-dependency-path: '**/go.sum'
+      - uses: astral-sh/setup-uv@v5
+        if: needs.changes.outputs.py == 'true' || github.event_name == 'push'
+        with:
+          enable-cache: true
+      - uses: pnpm/action-setup@v4
+        if: needs.changes.outputs.fe == 'true' || github.event_name == 'push'
+        with:
+          package_json_file: frontend/package.json
+      - uses: actions/setup-node@v4
+        if: needs.changes.outputs.fe == 'true' || github.event_name == 'push'
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: build go
+        if: needs.changes.outputs.go == 'true' || github.event_name == 'push'
+        run: make build-go
+      - name: build python
+        if: needs.changes.outputs.py == 'true' || github.event_name == 'push'
+        run: make build-py
+      - name: build frontend
+        if: needs.changes.outputs.fe == 'true' || github.event_name == 'push'
+        run: make build-fe
+      - name: detect dockerfiles
+        id: detect
+        run: |
+          if ls deploy/docker/*.Dockerfile >/dev/null 2>&1; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # spec-0.3 D5：镜像 job 骨架——Dockerfile（spec-0.10）就位后自动激活，仅 main。
+  image:
+    name: image
+    needs: [changes, build]
+    if: github.event_name == 'push' && needs.build.outputs.dockerfiles == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        component: [console, connector, gateway, agent-runtime, skills, frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: build and push
+        run: make image-${{ matrix.component }} PUSH=true   # 目标由 spec-0.10 定义

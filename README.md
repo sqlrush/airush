@@ -1,5 +1,7 @@
 # AIRush — 数据库管理智能体平台
 
+[![ci](https://github.com/sqlrush/airush/actions/workflows/ci.yml/badge.svg)](https://github.com/sqlrush/airush/actions/workflows/ci.yml)
+
 面向企业客户的 SaaS 多租户数据库管理智能体平台：智能运维管理 + 巡检与合规。
 支持 MySQL 协议族、PostgreSQL 协议族与达梦，客户侧 Connector 反向隧道接入。
 

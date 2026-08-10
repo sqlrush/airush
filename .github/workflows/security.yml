@@ -1,0 +1,47 @@
+# spec-0.3 D2：安全扫描。secret 泄漏 PR 阻断（合并前必拦，CLAUDE.md 安全原则 5）；
+# 依赖 CVE 每日扫描（新 CVE 与代码变更无关，无需占 PR 额度）。
+name: security
+
+on:
+  pull_request:
+  schedule:
+    - cron: "30 20 * * *" # 每日 04:30 CST
+
+jobs:
+  gitleaks:
+    name: security/gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  deps-audit:
+    name: security/deps
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache-dependency-path: "**/go.sum"
+      - uses: astral-sh/setup-uv@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: frontend/package.json
+      - name: govulncheck (per module)
+        run: |
+          for m in console connector gateway agent-runtime; do
+            echo "==> govulncheck $m"
+            (cd "$m" && go run golang.org/x/vuln/cmd/govulncheck@latest ./...)
+          done
+      - name: pip-audit
+        run: |
+          uv export --format requirements-txt --no-emit-project -o /tmp/req.txt
+          uvx pip-audit -r /tmp/req.txt --strict
+      - name: pnpm audit
+        run: cd frontend && pnpm audit --audit-level high
