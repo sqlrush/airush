@@ -94,12 +94,15 @@ jobs:
       - name: markdown link check
         if: needs.changes.outputs.docs == 'true'
         run: deploy/scripts/check-md-links.sh
-      - name: migration guards
+      - name: migration & registry guards
         if: needs.changes.outputs.go == 'true' || github.event_name == 'push'
         run: |
           deploy/scripts/check-migration-seq.sh
+          make generate
+          git diff --exit-code || { echo "ERROR: 生成物与 SSOT 不一致，请本地 make generate 后提交"; exit 1; }
           git fetch --no-tags --depth=50 origin main
           deploy/scripts/check-migration-immutable.sh origin/main
+          deploy/scripts/check-error-codes-immutable.sh origin/main
 
   test:
     name: ci/test

@@ -11,9 +11,14 @@ echo "== Go coverage (threshold ${THRESHOLD}%, enforce=${COVER_ENFORCE:-0}) =="
 for f in bin/cover/*.out; do
   [ -e "$f" ] || { echo "no coverage profiles found"; exit 1; }
   m=$(basename "$f" .out)
+  if [ "$m" = "testkit" ]; then
+    printf "  %-16s %8s  (测试基建，逻辑由集成态覆盖，豁免——spec-0.4 修订)\n" "$m" "n/a"
+    continue
+  fi
   pct=$(awk '
     NR > 1 {
       if ($1 ~ /cmd\/[a-z-]+\/main\.go:/) next        # 装配层
+      if ($1 ~ /\/gen\/main\.go:/) next               # 生成器工具（装配层同类）
       if ($1 ~ /_gen\.go:/ || $1 ~ /\.pb\.go:/) next  # 生成代码
       if ($1 ~ /internal\/codexcore\//) next          # vendored
       total += $2; if ($3 > 0) covered += $2

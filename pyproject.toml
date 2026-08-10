@@ -8,7 +8,7 @@ members = ["skills"]
 target-version = "py312"
 line-length = 100
 src = ["skills"]
-extend-exclude = ["**/generated/**"]
+extend-exclude = ["**/generated/**", "**/*_gen.py"]
 
 [tool.ruff.lint]
 # E/W=pycodestyle F=pyflakes I=isort UP=pyupgrade B=bugbear S=bandit（spec-0.2 §2.2）
@@ -32,6 +32,6 @@ omit = ["*/generated/*"]
 strict = true
 python_version = "3.12"
 files = ["skills"]
-exclude = ["generated"]
+exclude = ["generated", "_gen\\.py$"]
 # 第三方缺 stub 的库按模块显式豁免（禁全局关闭）；豁免数 >10 触发重估（spec-0.2 §6）
 # [[tool.mypy.overrides]] 段随真实依赖出现增补，当前为空。

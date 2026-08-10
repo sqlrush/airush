@@ -16,11 +16,25 @@ import (
 	"github.com/sqlrush/airush/console/migrations"
 )
 
+// validateArgs 前置校验子命令（无 DB 依赖，可单测）。
+func validateArgs(args []string) (string, error) {
+	if len(args) != 1 {
+		return "", errors.New("用法: console migrate <up|down|version>")
+	}
+	switch args[0] {
+	case "up", "down", "version":
+		return args[0], nil
+	default:
+		return "", fmt.Errorf("未知子命令 %q（可用: up/down/version）", args[0])
+	}
+}
+
 // RunWithURL 以显式连接串执行迁移子命令（连接串由 main 经 spec-0.7 配置框架供给，
 // 集成测试直连本入口）。
 func RunWithURL(dbURL string, args []string) error {
-	if len(args) != 1 {
-		return errors.New("用法: console migrate <up|down|version>")
+	sub, err := validateArgs(args)
+	if err != nil {
+		return err
 	}
 
 	m, err := newMigrator(dbURL)
@@ -29,7 +43,7 @@ func RunWithURL(dbURL string, args []string) error {
 	}
 	defer func() { _, _ = m.Close() }()
 
-	switch args[0] {
+	switch sub {
 	case "up":
 		if err := m.Up(); err != nil {
 			if errors.Is(err, gomigrate.ErrNoChange) {
@@ -59,7 +73,7 @@ func RunWithURL(dbURL string, args []string) error {
 		fmt.Printf("migrate: version=%d dirty=%v\n", v, dirty)
 		return nil
 	default:
-		return fmt.Errorf("未知子命令 %q（可用: up/down/version）", args[0])
+		return fmt.Errorf("未知子命令 %q", sub) // validateArgs 已拦，防御分支
 	}
 }
 

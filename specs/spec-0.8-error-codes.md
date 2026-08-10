@@ -9,7 +9,12 @@
 - **配套规则**：development-standards §1.3（错误必须处理/传递、用户消息不泄内部细节）、
   §5（API 错误响应 `{code, message, trace_id}`）、§3（Python AirushError 树）；
   CLAUDE.md 规则 4（每个错误码有触发用例）、规则 6（未实现分支显式报错含错误码）；
-- **决策日期**：2026-08-09。
+- **决策日期**：2026-08-09；
+- **实施修订（2026-08-10）**：① 注册表为 **proto/errors.json**（非 yaml）——生成器
+  纯 stdlib 零依赖，注释以 $comment/description 字段承载；② `AR_INTERNAL` 更名
+  `AR_INTERNAL_ERROR`（严格执行 AR_<DOMAIN>_<REASON> 三段格式，生成器校验拦截）；
+  ③ D5"占位 HTTP handler 端到端演示"以 httptest 用例实现（占位 main 尚无 HTTP
+  服务，spec-0.9 D5 起真实端点后自然衔接）；④ 无新增第三方依赖（生成器 stdlib）。
 
 ## §1 范围
 

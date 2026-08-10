@@ -5,7 +5,7 @@
 SHELL := /bin/bash
 GO_MODULES := console connector gateway agent-runtime
 # GO_ALL 含非组件模块（testkit 等）：参与 lint/test/cover，不产二进制
-GO_ALL := $(GO_MODULES) testkit
+GO_ALL := $(GO_MODULES) testkit libs/config libs/apierror
 
 # 本仓库使用 go.work 工作区；强制 -mod=readonly，避免用户全局 -mod=mod 与
 # workspace 模式冲突（workspace 下 -mod 仅允许 readonly/vendor）。
@@ -29,10 +29,10 @@ build-go:
 	@mkdir -p bin
 	@for m in $(GO_MODULES); do \
 		echo "==> build $$m"; \
-		(cd $$m && $(GO) build -o ../bin/$$m ./cmd/$$m) || exit 1; \
+		(cd $$m && $(TOOL_ENV) $(GO) build -o ../bin/$$m ./cmd/$$m) || exit 1; \
 	done
 	@echo "==> build testkit (compile check)"
-	@cd testkit && $(GO) build ./...
+	@cd testkit && $(TOOL_ENV) $(GO) build ./...
 
 build-py:
 	@echo "==> build skills (uv sync + import check)"
@@ -49,7 +49,7 @@ test: test-go test-py test-fe
 test-go:
 	@for m in $(GO_ALL); do \
 		echo "==> test $$m"; \
-		(cd $$m && $(GO) test -race ./...) || exit 1; \
+		(cd $$m && $(TOOL_ENV) $(GO) test -race ./...) || exit 1; \
 	done
 
 test-py:
@@ -67,7 +67,7 @@ cover-go:
 	@mkdir -p bin/cover
 	@for m in $(GO_ALL); do \
 		echo "==> cover $$m"; \
-		(cd $$m && $(GO) test -race -covermode=atomic -coverprofile=../bin/cover/$$m.out ./...) || exit 1; \
+		(cd $$m && $(TOOL_ENV) $(GO) test -race -covermode=atomic -coverprofile=$(CURDIR)/bin/cover/$${m//\//-}.out ./...) || exit 1; \
 	done
 	@deploy/scripts/coverage-gate.sh
 
@@ -87,7 +87,7 @@ GOLANGCI := $(TOOLS_BIN)/golangci-lint-$(GOLANGCI_VERSION)
 
 $(GOLANGCI):
 	@mkdir -p $(TOOLS_BIN)
-	GOFLAGS= GOBIN=$(TOOLS_BIN) $(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION)
+	GOFLAGS= GOBIN=$(TOOLS_BIN) $(TOOL_ENV) $(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION)
 	@mv $(TOOLS_BIN)/golangci-lint $(GOLANGCI)
 
 ## lint: 三语言全量（spec-0.2 实装）+ 迁移编号检查（spec-0.6）
@@ -127,12 +127,16 @@ docker-check:
 integration-test-go: docker-check
 	@for m in $(GO_ALL); do \
 		echo "==> integration $$m"; \
-		(cd $$m && $(GO) test -race -tags integration ./...) || exit 1; \
+		(cd $$m && $(TOOL_ENV) $(GO) test -race -tags integration ./...) || exit 1; \
 	done
 
 integration-test-py: docker-check
 	@echo "==> integration skills"
 	@uv run pytest -q -m integration
+
+## generate: 从 SSOT 生成代码（proto/errors.json → 双语言错误码，spec-0.8 D1）
+generate:
+	@cd libs/apierror && $(TOOL_ENV) $(GO) run ./gen
 
 ## migrate-new: 生成下一编号迁移文件对（spec-0.6 D2）
 migrate-new:
@@ -157,10 +161,10 @@ clean:
 ## 单组件粒度：make console/build、make gateway/test 等
 $(GO_MODULES:%=%/build):
 	@mkdir -p bin
-	cd $(@D) && $(GO) build -o ../bin/$(@D) ./cmd/$(@D)
+	cd $(@D) && $(TOOL_ENV) $(GO) build -o ../bin/$(@D) ./cmd/$(@D)
 
 $(GO_MODULES:%=%/test):
-	cd $(@D) && $(GO) test ./...
+	cd $(@D) && $(TOOL_ENV) $(GO) test ./...
 
 ## doctor: 检查工具链存在与版本下限（spec-0.1 §6 缓解项）
 doctor:
