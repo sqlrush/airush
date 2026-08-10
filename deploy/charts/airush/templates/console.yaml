@@ -1,0 +1,96 @@
+{{- if .Values.console.enabled }}
+{{- if and (not .Values.console.credentialKek) (not .Values.console.credentialKekSecret) }}
+{{- fail "console.enabled 需要凭据加密 KEK：设置 console.credentialKekSecret（生产，引用既有 Secret）或 console.credentialKek（开发）" }}
+{{- end }}
+{{- if .Values.console.credentialKek }}
+# 开发/演示形态：KEK 由 chart 生成 Secret（生产必须用 credentialKekSecret 引用外部 Secret）
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .Release.Name }}-console-kek
+  labels:
+    {{- include "airush.labels" . | nindent 4 }}
+type: Opaque
+data:
+  credential-kek: {{ .Values.console.credentialKek | b64enc }}
+---
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-console
+  labels:
+    {{- include "airush.labels" . | nindent 4 }}
+    {{- include "airush.selector" "console" | nindent 4 }}
+spec:
+  replicas: {{ .Values.console.replicas }}
+  selector:
+    matchLabels:
+      {{- include "airush.selector" "console" | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "airush.labels" . | nindent 8 }}
+        {{- include "airush.selector" "console" | nindent 8 }}
+    spec:
+      containers:
+        - name: console
+          image: "{{ .Values.image.registry }}/console:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["--serve"]
+          ports:
+            - containerPort: 8080
+          env:
+            - name: AIRUSH_CONSOLE_LISTEN_ADDR
+              value: {{ .Values.console.listen | quote }}
+            - name: AIRUSH_CONSOLE_DB_URL
+              {{- if .Values.console.dbUrl }}
+              value: {{ .Values.console.dbUrl | quote }}
+              {{- else }}
+              value: {{ include "airush.builtinPgUrl" . | quote }}
+              {{- end }}
+            - name: AIRUSH_CONSOLE_CREDENTIAL_KEK
+              valueFrom:
+                secretKeyRef:
+                  {{- if .Values.console.credentialKekSecret }}
+                  name: {{ .Values.console.credentialKekSecret }}
+                  {{- else }}
+                  name: {{ .Release.Name }}-console-kek
+                  {{- end }}
+                  key: credential-kek
+            - name: AIRUSH_CONSOLE_CREDENTIAL_KEK_ID
+              value: {{ .Values.console.credentialKekId | quote }}
+            - name: AIRUSH_CONSOLE_DEFAULT_TENANT_ID
+              value: {{ .Values.console.defaultTenantId | quote }}
+            - name: AIRUSH_COMMON_LOG_LEVEL
+              value: {{ .Values.common.logLevel | quote }}
+            - name: AIRUSH_COMMON_OTLP_ENDPOINT
+              value: {{ .Values.common.otlpEndpoint | quote }}
+            - name: AIRUSH_COMMON_TRACE_SAMPLE_RATIO
+              value: {{ .Values.common.traceSampleRatio | quote }}
+            - name: AIRUSH_ENV
+              value: production
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            initialDelaySeconds: 2
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            initialDelaySeconds: 1
+          resources:
+            {{- toYaml .Values.console.resources | nindent 12 }}
+          securityContext:
+            {{- include "airush.securityContext" . | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-console
+  labels:
+    {{- include "airush.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "airush.selector" "console" | nindent 4 }}
+  ports:
+    - port: 8080
+      targetPort: 8080
+{{- end }}

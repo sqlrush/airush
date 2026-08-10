@@ -6,6 +6,25 @@
 
 ## [Unreleased]
 
+### Added
+
+- 控制面领域模型与 API 骨架（spec-1.1）：
+  - 迁移 0002：users/connectors/datasource_groups/agents/datasource_credentials/
+    datasources/datasource_aliases/idempotency_keys 八表，全部租户表套 RLS 模板四要素，
+    租户内外键复合形态防跨租户悬挂引用；dev 租户 + dev 管理员 seed；
+  - `console --serve`：控制面 REST API（datasources/agents/datasource-groups/aliases/
+    connectors CRUD），OpenAPI 契约先行（proto/openapi/console.yaml）；
+  - 租户上下文基座：tenancy ctx 唯一注入/取用点 + repo 租户事务
+    （SET LOCAL ROLE airush_app + app.tenant_id，RLS 应用层执行路径）+
+    depguard 硬禁 httpapi 直连 pgx；
+  - 直连凭据信封加密（AD-4②）：AES-256-GCM 双层（KEK env/k8s Secret 注入、
+    DEK 每凭据随机、key_id 轮换位）；API/日志/响应零回显；
+  - keyset 分页（不透明游标）+ Idempotency-Key 幂等（响应快照同事务落库）；
+  - 新错误码 7 个（AR_DATASOURCE_*/AR_AGENT_NOT_FOUND/AR_ALIAS_CONFLICT/
+    AR_IDEMPOTENCY_REPLAY）；
+  - Helm console 组件（Deployment/Service/KEK Secret，dev 默认开启）+
+    dev-verify console API 端到端断言。
+
 ## [0.1.0] - 2026-08-10
 
 ### Added

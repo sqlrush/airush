@@ -1,0 +1,490 @@
+# 控制面 REST API 契约（spec-1.1 D4，契约先行——前端类型从此生成，实现向契约对齐）。
+# 错误形态 $ref error.yaml；错误码枚举 SSOT 在 proto/errors.json，此处不复制。
+# 租户从认证态推导（Stage 1 = 配置默认租户），永不出现在路径/参数（standards §5）。
+openapi: 3.0.3
+info:
+  title: AIRush Console API
+  version: v1
+  description: 控制面领域模型 CRUD（datasources/agents/groups/aliases/connectors）
+
+paths:
+  /api/v1/datasources:
+    get:
+      summary: 列出数据源（keyset 分页）
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: 分页结果
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, next_cursor]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Datasource" }
+                  next_cursor: { $ref: "#/components/schemas/NextCursor" }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      summary: 创建数据源（双模式；direct 模式凭据内联且永不回显）
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DatasourceCreate" }
+      responses:
+        "201":
+          description: 已创建
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Datasource" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/datasources/{id}:
+    parameters: [{ $ref: "#/components/parameters/ID" }]
+    get:
+      summary: 数据源详情
+      responses:
+        "200":
+          description: 详情
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Datasource" }
+        default: { $ref: "#/components/responses/Error" }
+    patch:
+      summary: 部分更新（group_id/agent_id 传空串 = 解绑；connect_mode/engine_family 不可变）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DatasourcePatch" }
+      responses:
+        "200":
+          description: 更新后的数据源
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Datasource" }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      summary: 删除（被组/agent 引用时 409 AR_DATASOURCE_IN_USE；别名级联；凭据随行清除）
+      responses:
+        "204": { description: 已删除 }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/datasources/{id}/credential:
+    put:
+      summary: 直连凭据设置/轮换（仅 direct 模式；请求明文即刻信封加密，响应永不回显）
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CredentialSet" }
+      responses:
+        "204": { description: 已加密保存 }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/datasources/{id}/aliases:
+    parameters: [{ $ref: "#/components/parameters/ID" }]
+    get:
+      summary: 数据源别名列表（量级小，不分页）
+      responses:
+        "200":
+          description: 别名列表
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Alias" }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      summary: 新增别名（租户内唯一，冲突 409 AR_ALIAS_CONFLICT）
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AliasCreate" }
+      responses:
+        "201":
+          description: 已创建
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Alias" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/datasources/{id}/aliases/{alias}:
+    delete:
+      summary: 删除别名
+      parameters:
+        - $ref: "#/components/parameters/ID"
+        - name: alias
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: 已删除 }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/agents:
+    get:
+      summary: 列出智能体（keyset 分页）
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: 分页结果
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, next_cursor]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Agent" }
+                  next_cursor: { $ref: "#/components/schemas/NextCursor" }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      summary: 创建智能体
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AgentCreate" }
+      responses:
+        "201":
+          description: 已创建
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Agent" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/agents/{id}:
+    parameters: [{ $ref: "#/components/parameters/ID" }]
+    get:
+      summary: 智能体详情
+      responses:
+        "200":
+          description: 详情
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Agent" }
+        default: { $ref: "#/components/responses/Error" }
+    patch:
+      summary: 部分更新（instruction_doc 变更时 instruction_version 自增）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AgentPatch" }
+      responses:
+        "200":
+          description: 更新后的智能体
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Agent" }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      summary: 删除（仍有数据源绑定时 409）
+      responses:
+        "204": { description: 已删除 }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/datasource-groups:
+    get:
+      summary: 列出编组（keyset 分页）
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: 分页结果
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, next_cursor]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Group" }
+                  next_cursor: { $ref: "#/components/schemas/NextCursor" }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      summary: 创建编组
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GroupCreate" }
+      responses:
+        "201":
+          description: 已创建
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Group" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/datasource-groups/{id}:
+    parameters: [{ $ref: "#/components/parameters/ID" }]
+    get:
+      summary: 编组详情
+      responses:
+        "200":
+          description: 详情
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Group" }
+        default: { $ref: "#/components/responses/Error" }
+    patch:
+      summary: 重命名（kind 不可变——主备/集群语义不同，改 kind = 重建组）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        "200":
+          description: 更新后的编组
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Group" }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      summary: 删除（仍有成员时 409）
+      responses:
+        "204": { description: 已删除 }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/connectors:
+    get:
+      summary: 列出 Connector（只读；注册/心跳协议见 spec-1.2）
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: 分页结果
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, next_cursor]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Connector" }
+                  next_cursor: { $ref: "#/components/schemas/NextCursor" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/connectors/{id}:
+    get:
+      summary: Connector 详情
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      responses:
+        "200":
+          description: 详情
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Connector" }
+        default: { $ref: "#/components/responses/Error" }
+
+components:
+  parameters:
+    ID:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Cursor:
+      name: cursor
+      in: query
+      schema: { type: string }
+      description: 不透明游标（上一页 next_cursor；结构禁依赖）
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      schema: { type: string }
+      description: 幂等键；同键同 payload 重放原响应，payload 不同 → 409 AR_IDEMPOTENCY_REPLAY
+
+  responses:
+    Error:
+      description: 标准错误响应（spec-0.8 契约）
+      content:
+        application/json:
+          schema: { $ref: "./error.yaml#/components/schemas/ErrorResponse" }
+
+  schemas:
+    NextCursor:
+      type: [string, "null"]
+      description: 下一页游标；null 表示无更多
+
+    Datasource:
+      type: object
+      required:
+        [id, name, engine_family, engine, engine_version, connect_mode, connector_id,
+         has_credential, host, port, database_name, group_id, group_role, agent_id,
+         health_status, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        engine_family: { type: string, enum: [postgres, mysql, dm] }
+        engine: { type: string, description: 具体引擎（如 opengauss/vastbase） }
+        engine_version: { type: string }
+        connect_mode: { type: string, enum: [connector, direct] }
+        connector_id: { type: [string, "null"], format: uuid }
+        has_credential: { type: boolean, description: 凭据存在性（密文/明文永不出现在 API） }
+        host: { type: string }
+        port: { type: integer, minimum: 1, maximum: 65535 }
+        database_name: { type: string }
+        group_id: { type: [string, "null"], format: uuid }
+        group_role: { type: [string, "null"], enum: [primary, standby, replica, node, null] }
+        agent_id: { type: [string, "null"], format: uuid }
+        health_status: { type: string, enum: [unknown, ok, warn, crit] }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    DatasourceCreate:
+      type: object
+      required: [name, engine_family, connect_mode, host, port]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 128 }
+        engine_family: { type: string, enum: [postgres, mysql, dm] }
+        engine: { type: string }
+        engine_version: { type: string }
+        connect_mode:
+          type: string
+          enum: [connector, direct]
+          description: connector 模式必带 connector_id；direct 模式必带 credential
+        connector_id: { type: string, format: uuid }
+        host: { type: string }
+        port: { type: integer, minimum: 1, maximum: 65535 }
+        database_name: { type: string }
+        group_id: { type: string, format: uuid, description: 与 group_role 成对 }
+        group_role: { type: string, enum: [primary, standby, replica, node] }
+        agent_id: { type: string, format: uuid }
+        credential:
+          $ref: "#/components/schemas/CredentialSet"
+
+    DatasourcePatch:
+      type: object
+      description: 全字段可选；group_id/agent_id 传空串 = 解绑
+      properties:
+        name: { type: string, minLength: 1, maxLength: 128 }
+        engine: { type: string }
+        engine_version: { type: string }
+        host: { type: string, minLength: 1 }
+        port: { type: integer, minimum: 1, maximum: 65535 }
+        database_name: { type: string }
+        group_id: { type: string }
+        group_role: { type: string }
+        agent_id: { type: string }
+
+    CredentialSet:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string, minLength: 1 }
+        password:
+          type: string
+          minLength: 1
+          format: password
+          description: 仅入参；入库前信封加密（AD-4②），任何响应/日志不回显
+
+    Agent:
+      type: object
+      required: [id, name, kind, status, instruction_doc, instruction_version, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        kind: { type: string, enum: [assistant, domain] }
+        status: { type: string, enum: [running, paused] }
+        instruction_doc: { type: string }
+        instruction_version: { type: integer }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    AgentCreate:
+      type: object
+      required: [name, kind]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 128 }
+        kind: { type: string, enum: [assistant, domain] }
+        instruction_doc: { type: string }
+
+    AgentPatch:
+      type: object
+      properties:
+        name: { type: string, minLength: 1, maxLength: 128 }
+        status: { type: string, enum: [running, paused] }
+        instruction_doc: { type: string, description: 提供即 instruction_version+1 }
+
+    Group:
+      type: object
+      required: [id, name, kind, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        kind: { type: string, enum: [primary_standby, cluster] }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    GroupCreate:
+      type: object
+      required: [name, kind]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 128 }
+        kind: { type: string, enum: [primary_standby, cluster] }
+
+    Alias:
+      type: object
+      required: [id, datasource_id, alias, source, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        datasource_id: { type: string, format: uuid }
+        alias: { type: string }
+        source: { type: string, enum: [manual, conversation] }
+        created_at: { type: string, format: date-time }
+
+    AliasCreate:
+      type: object
+      required: [alias]
+      properties:
+        alias: { type: string, minLength: 1, maxLength: 64 }
+        source: { type: string, enum: [manual, conversation], default: manual }
+
+    Connector:
+      type: object
+      required:
+        [id, name, location, version, status, last_heartbeat_at, cert_fingerprint,
+         created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        location: { type: string }
+        version: { type: string }
+        status: { type: string, enum: [online, offline, degraded] }
+        last_heartbeat_at: { type: [string, "null"], format: date-time }
+        cert_fingerprint: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
