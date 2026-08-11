@@ -1,6 +1,6 @@
 # spec-1.2 Connector 核心（注册 / mTLS 长连接 / 心跳 / 指令通道）
 
-> **DRAFT — 待 user approve**（Stage 1 严格事前批准：approve 前不编码）
+> **frozen** — user approve 2026-08-11（Q1-Q7 全采★；grpc/protobuf 直接依赖与 buf 工具备案一并批准）
 > 本 spec 被指定为**参照模板级**（规则 2）：后续 spec 对照其结构与颗粒度起草。
 
 ## Header / 元数据
