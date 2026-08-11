@@ -132,9 +132,11 @@ docker-check:
 		exit 2; }
 
 integration-test-go: docker-check
+	@mkdir -p bin/cover/integration
 	@for m in $(GO_ALL); do \
 		echo "==> integration $$m"; \
-		(cd $$m && $(TOOL_ENV) $(GO) test -race -tags integration ./...) || exit 1; \
+		(cd $$m && $(TOOL_ENV) $(GO) test -race -tags integration -covermode=atomic \
+			-coverpkg=./... -coverprofile=$(CURDIR)/bin/cover/integration/$${m//\//-}.out ./...) || exit 1; \
 	done
 
 integration-test-py: docker-check

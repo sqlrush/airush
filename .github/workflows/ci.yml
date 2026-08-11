@@ -160,9 +160,15 @@ jobs:
       - name: integration go
         if: needs.changes.outputs.go == 'true' || github.event_name == 'push'
         run: make integration-test-go
+      - name: coverage gate（合并口径阻断，spec-1.1 起）
+        if: needs.changes.outputs.go == 'true' || github.event_name == 'push'
+        run: COVER_ENFORCE=1 make cover-go
       - name: integration python
         if: needs.changes.outputs.py == 'true' || github.event_name == 'push'
         run: make integration-test-py
+      - name: coverage python（阻断，spec-1.1 起）
+        if: needs.changes.outputs.py == 'true' || github.event_name == 'push'
+        run: COVER_ENFORCE=1 make cover-py
 
   build:
     name: ci/build

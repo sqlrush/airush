@@ -300,6 +300,7 @@ func TestAPIIntegration(t *testing.T) {
 	})
 
 	runPaginationAndIdempotency(t, env)
+	runAgentAndGroupLifecycle(t, env)
 	runBindingsAndAliases(t, env, &directDSID)
 
 	t.Run("T5 终扫", func(t *testing.T) {
@@ -378,6 +379,98 @@ func runPaginationAndIdempotency(t *testing.T, env *apiEnv) {
 		status, body = env.do(t, env.dev, "POST", "/api/v1/agents",
 			map[string]any{"name": "different", "kind": "assistant"}, hdr)
 		wantCode(t, status, body, 409, "AR_IDEMPOTENCY_REPLAY")
+	})
+}
+
+// runAgentAndGroupLifecycle agents/groups 的读取、更新与删除语义全生命周期。
+func runAgentAndGroupLifecycle(t *testing.T, env *apiEnv) {
+	t.Run("agent 生命周期", func(t *testing.T) {
+		status, body := env.do(t, env.dev, "POST", "/api/v1/agents",
+			map[string]any{"name": "lc-agent", "kind": "domain", "instruction_doc": "v1 doc"}, nil)
+		if status != 201 {
+			t.Fatalf("create: %d %.200s", status, body)
+		}
+		id := jsonMap(t, body)["id"].(string)
+
+		status, body = env.do(t, env.dev, "GET", "/api/v1/agents/"+id, nil, nil)
+		if status != 200 || jsonMap(t, body)["instruction_version"] != float64(1) {
+			t.Fatalf("get: %d %.200s", status, body)
+		}
+
+		// instruction_doc 变更 → 版本自增；status 同步可改
+		status, body = env.do(t, env.dev, "PATCH", "/api/v1/agents/"+id,
+			map[string]any{"instruction_doc": "v2 doc", "status": "paused", "name": "lc-agent-2"}, nil)
+		m := jsonMap(t, body)
+		if status != 200 || m["instruction_version"] != float64(2) ||
+			m["status"] != "paused" || m["name"] != "lc-agent-2" {
+			t.Fatalf("patch: %d %.200s", status, body)
+		}
+
+		// 校验失败路径
+		status, body = env.do(t, env.dev, "PATCH", "/api/v1/agents/"+id,
+			map[string]any{"status": "stopped"}, nil)
+		wantCode(t, status, body, 400, "AR_VALIDATION_FAILED")
+
+		// 绑定数据源 → 删除被拒；解绑 → 删除成功
+		status, body = env.do(t, env.dev, "POST", "/api/v1/datasources", map[string]any{
+			"name": "lc-ds", "engine_family": "postgres", "connect_mode": "connector",
+			"connector_id": connectorID, "host": "h", "port": 5432, "agent_id": id,
+		}, nil)
+		if status != 201 {
+			t.Fatalf("create bound ds: %d %.200s", status, body)
+		}
+		dsID := jsonMap(t, body)["id"].(string)
+
+		status, body = env.do(t, env.dev, "DELETE", "/api/v1/agents/"+id, nil, nil)
+		wantCode(t, status, body, 409, "AR_COMMON_CONFLICT")
+
+		// 数据源被 agent 绑定时删除同样受保护（T10 另一翼）
+		status, body = env.do(t, env.dev, "DELETE", "/api/v1/datasources/"+dsID, nil, nil)
+		wantCode(t, status, body, 409, "AR_DATASOURCE_IN_USE")
+
+		status, body = env.do(t, env.dev, "PATCH", "/api/v1/datasources/"+dsID,
+			map[string]any{"agent_id": ""}, nil)
+		if status != 200 {
+			t.Fatalf("unbind: %d %.200s", status, body)
+		}
+		if status, body = env.do(t, env.dev, "DELETE", "/api/v1/agents/"+id, nil, nil); status != 204 {
+			t.Fatalf("delete agent: %d %.200s", status, body)
+		}
+		if status, body = env.do(t, env.dev, "DELETE", "/api/v1/datasources/"+dsID, nil, nil); status != 204 {
+			t.Fatalf("delete ds: %d %.200s", status, body)
+		}
+	})
+
+	t.Run("group 生命周期", func(t *testing.T) {
+		status, body := env.do(t, env.dev, "POST", "/api/v1/datasource-groups",
+			map[string]any{"name": "lc-group", "kind": "cluster"}, nil)
+		if status != 201 {
+			t.Fatalf("create: %d %.200s", status, body)
+		}
+		id := jsonMap(t, body)["id"].(string)
+
+		status, body = env.do(t, env.dev, "GET", "/api/v1/datasource-groups", nil, nil)
+		if status != 200 || len(jsonMap(t, body)["items"].([]any)) < 1 {
+			t.Fatalf("list: %d %.200s", status, body)
+		}
+		status, body = env.do(t, env.dev, "GET", "/api/v1/datasource-groups/"+id, nil, nil)
+		if status != 200 || jsonMap(t, body)["kind"] != "cluster" {
+			t.Fatalf("get: %d %.200s", status, body)
+		}
+		status, body = env.do(t, env.dev, "PATCH", "/api/v1/datasource-groups/"+id,
+			map[string]any{"name": "lc-group-renamed"}, nil)
+		if status != 200 || jsonMap(t, body)["name"] != "lc-group-renamed" {
+			t.Fatalf("rename: %d %.200s", status, body)
+		}
+		status, body = env.do(t, env.dev, "PATCH", "/api/v1/datasource-groups/"+id,
+			map[string]any{"name": ""}, nil)
+		wantCode(t, status, body, 400, "AR_VALIDATION_FAILED")
+		status, body = env.do(t, env.dev, "GET",
+			"/api/v1/datasource-groups/99999999-9999-9999-9999-999999999999", nil, nil)
+		wantCode(t, status, body, 404, "AR_COMMON_NOT_FOUND")
+		if status, body = env.do(t, env.dev, "DELETE", "/api/v1/datasource-groups/"+id, nil, nil); status != 204 {
+			t.Fatalf("delete: %d %.200s", status, body)
+		}
 	})
 }
 
