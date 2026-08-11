@@ -47,12 +47,17 @@ code=$(curl -s -o /tmp/airush-ds.json -w '%{http_code}' -X POST http://localhost
     "credential":{"username":"dba","password":"dev-verify-secret"}}')
 if [ "$code" != "201" ] && [ "$code" != "409" ]; then kill $PF; fail "创建数据源失败 http=$code $(cat /tmp/airush-ds.json)"; fi
 n=$(curl -sf http://localhost:18080/api/v1/datasources | grep -o '"name":"dev-verify-og"' | wc -l | tr -d ' ')
-kill $PF 2>/dev/null
-[ "$n" = "1" ] || fail "数据源列表未见 dev-verify-og"
+[ "$n" = "1" ] || { kill $PF 2>/dev/null; fail "数据源列表未见 dev-verify-og"; }
 leak=$("${KCTL[@]}" exec airush-pg-0 -- psql -U postgres -d airush -tAc \
   "SELECT count(*) FROM datasource_credentials WHERE position('dev-verify-secret'::bytea in secret_ciphertext) > 0")
 [ "$leak" = "0" ] || fail "凭据明文出现在密文列（AD-4② 违规）"
-echo "  console API OK（201/幂等 409、列表可见、密文无明文）"
+# spec-1.17：test-connection（dev-verify-og host 不可达）→ 连接失败错误码，响应无凭据明文
+dsid=$(curl -sf http://localhost:18080/api/v1/datasources | sed -n 's/.*"id":"\([0-9a-f-]*\)","name":"dev-verify-og".*/\1/p')
+tc=$(curl -s -X POST http://localhost:18080/api/v1/datasources/$dsid/test-connection)
+kill $PF 2>/dev/null
+echo "$tc" | grep -qE 'AR_DATASOURCE_(CONNECT_FAILED|TEST_TIMEOUT)' || fail "test-connection 错误码异常: $tc"
+echo "$tc" | grep -q 'dev-verify-secret' && fail "test-connection 响应泄漏凭据明文"
+echo "  console API OK（201/幂等 409、列表可见、密文无明文、test-connection 错误码+无泄漏）"
 
 echo "== connector 接入 e2e（spec-1.2：enroll → session → online） =="
 # 幂等前置（spec-0.12 §3 从零语义）：清理上次遗留的 dev-verify-conn

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/sqlrush/airush/console/internal/dbmigrate"
 	"github.com/sqlrush/airush/libs/config"
@@ -29,6 +30,9 @@ type appConfig struct {
 	SvcToken string `env:"SVC_TOKEN" secret:"true"`
 	CACert   string `env:"CA_CERT"   secret:"true"`
 	CAKey    string `env:"CA_KEY"    secret:"true"`
+	// spec-1.17：直连接入器连接池参数。
+	DirectIdleTTL        time.Duration `env:"DIRECT_IDLE_TTL"        default:"10m"`
+	DirectConnectTimeout time.Duration `env:"DIRECT_CONNECT_TIMEOUT" default:"8s"`
 }
 
 // version 由构建期 -ldflags 注入（spec-0.10/0.11 定版链路）。

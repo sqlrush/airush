@@ -92,6 +92,25 @@ paths:
         "204": { description: 已删除 }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/v1/datasources/{id}/test-connection:
+    post:
+      summary: 直连连通性测试（spec-1.17，仅 direct 模式；只读、不落库；connector 模式 501）
+      operationId: testDatasourceConnection
+      tags: [datasources]
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      responses:
+        "200":
+          description: 连接成功（含服务端版本）
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, server_version]
+                properties:
+                  ok: { type: boolean }
+                  server_version: { type: string }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/v1/datasources/{id}/credential:
     put:
       summary: 直连凭据设置/轮换（仅 direct 模式；请求明文即刻信封加密，响应永不回显）

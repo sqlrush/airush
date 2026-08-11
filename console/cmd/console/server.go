@@ -60,7 +60,14 @@ func buildHandler(cfg appConfig, store *repo.Store, version string) (http.Handle
 	if err != nil {
 		return nil, fmt.Errorf("init credential sealer: %w", err)
 	}
-	direct := directconn.New(store, sealer, directconn.DefaultConfig())
+	directCfg := directconn.DefaultConfig()
+	if cfg.DirectIdleTTL > 0 {
+		directCfg.IdleTTL = cfg.DirectIdleTTL
+	}
+	if cfg.DirectConnectTimeout > 0 {
+		directCfg.ConnectTimeout = cfg.DirectConnectTimeout
+	}
+	direct := directconn.New(store, sealer, directCfg)
 	api, err := httpapi.New(store, sealer, direct, cfg.DefaultTenantID)
 	if err != nil {
 		return nil, fmt.Errorf("init httpapi: %w", err)
