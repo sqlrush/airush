@@ -91,7 +91,7 @@ $(GOLANGCI):
 	@mv $(TOOLS_BIN)/golangci-lint $(GOLANGCI)
 
 ## lint: 三语言全量（spec-0.2 实装）+ 迁移编号检查（spec-0.6）
-lint: lint-go lint-py lint-fe migrate-check
+lint: lint-go lint-py lint-fe lint-openapi migrate-check
 
 lint-go: $(GOLANGCI)
 	@for m in $(GO_ALL); do \
@@ -108,6 +108,13 @@ lint-py:
 lint-fe:
 	@echo "==> lint frontend (eslint + prettier)"
 	@cd frontend && pnpm run lint && pnpm run format:check
+
+# spectral 钉版经 pnpm dlx（devDependency 同类：构建期工具，规则 8 豁免备案，CI 扫描覆盖）
+SPECTRAL_VERSION := 6.15.0
+lint-openapi:
+	@echo "==> lint openapi (spectral)"
+	@cd frontend && pnpm dlx @stoplight/spectral-cli@$(SPECTRAL_VERSION) \
+		lint --fail-severity=warn --ruleset ../proto/openapi/.spectral.yaml ../proto/openapi/console.yaml
 
 ## fmt: 分域格式化（Go=gofumpt+gci 经 golangci fmt；Py=ruff；FE=prettier），幂等
 fmt: $(GOLANGCI)

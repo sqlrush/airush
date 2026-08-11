@@ -1,16 +1,25 @@
 # 控制面 REST API 契约（spec-1.1 D4，契约先行——前端类型从此生成，实现向契约对齐）。
 # 错误形态 $ref error.yaml；错误码枚举 SSOT 在 proto/errors.json，此处不复制。
 # 租户从认证态推导（Stage 1 = 配置默认租户），永不出现在路径/参数（standards §5）。
-openapi: 3.0.3
+openapi: 3.1.0
 info:
   title: AIRush Console API
   version: v1
   description: 控制面领域模型 CRUD（datasources/agents/groups/aliases/connectors）
 
+tags:
+  - { name: datasources, description: 数据源主档（双模式接入） }
+  - { name: aliases, description: 数据源别名（助理路由） }
+  - { name: agents, description: 智能体注册 }
+  - { name: datasource-groups, description: 主备/集群编组 }
+  - { name: connectors, description: 客户侧代理（只读） }
+
 paths:
   /api/v1/datasources:
     get:
       summary: 列出数据源（keyset 分页）
+      operationId: listDatasources
+      tags: [datasources]
       parameters:
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
@@ -30,6 +39,8 @@ paths:
         default: { $ref: "#/components/responses/Error" }
     post:
       summary: 创建数据源（双模式；direct 模式凭据内联且永不回显）
+      operationId: createDatasource
+      tags: [datasources]
       parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
       requestBody:
         required: true
@@ -48,6 +59,8 @@ paths:
     parameters: [{ $ref: "#/components/parameters/ID" }]
     get:
       summary: 数据源详情
+      operationId: getDatasource
+      tags: [datasources]
       responses:
         "200":
           description: 详情
@@ -57,6 +70,8 @@ paths:
         default: { $ref: "#/components/responses/Error" }
     patch:
       summary: 部分更新（group_id/agent_id 传空串 = 解绑；connect_mode/engine_family 不可变）
+      operationId: patchDatasource
+      tags: [datasources]
       requestBody:
         required: true
         content:
@@ -71,6 +86,8 @@ paths:
         default: { $ref: "#/components/responses/Error" }
     delete:
       summary: 删除（被组/agent 引用时 409 AR_DATASOURCE_IN_USE；别名级联；凭据随行清除）
+      operationId: deleteDatasource
+      tags: [datasources]
       responses:
         "204": { description: 已删除 }
         default: { $ref: "#/components/responses/Error" }
@@ -78,6 +95,8 @@ paths:
   /api/v1/datasources/{id}/credential:
     put:
       summary: 直连凭据设置/轮换（仅 direct 模式；请求明文即刻信封加密，响应永不回显）
+      operationId: setDatasourceCredential
+      tags: [datasources]
       parameters: [{ $ref: "#/components/parameters/ID" }]
       requestBody:
         required: true
@@ -92,6 +111,8 @@ paths:
     parameters: [{ $ref: "#/components/parameters/ID" }]
     get:
       summary: 数据源别名列表（量级小，不分页）
+      operationId: listDatasourceAliases
+      tags: [aliases]
       responses:
         "200":
           description: 别名列表
@@ -107,6 +128,8 @@ paths:
         default: { $ref: "#/components/responses/Error" }
     post:
       summary: 新增别名（租户内唯一，冲突 409 AR_ALIAS_CONFLICT）
+      operationId: createDatasourceAlias
+      tags: [aliases]
       parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
       requestBody:
         required: true
@@ -124,6 +147,8 @@ paths:
   /api/v1/datasources/{id}/aliases/{alias}:
     delete:
       summary: 删除别名
+      operationId: deleteDatasourceAlias
+      tags: [aliases]
       parameters:
         - $ref: "#/components/parameters/ID"
         - name: alias
@@ -137,6 +162,8 @@ paths:
   /api/v1/agents:
     get:
       summary: 列出智能体（keyset 分页）
+      operationId: listAgents
+      tags: [agents]
       parameters:
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
@@ -156,6 +183,8 @@ paths:
         default: { $ref: "#/components/responses/Error" }
     post:
       summary: 创建智能体
+      operationId: createAgent
+      tags: [agents]
       parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
       requestBody:
         required: true
@@ -174,6 +203,8 @@ paths:
     parameters: [{ $ref: "#/components/parameters/ID" }]
     get:
       summary: 智能体详情
+      operationId: getAgent
+      tags: [agents]
       responses:
         "200":
           description: 详情
@@ -183,6 +214,8 @@ paths:
         default: { $ref: "#/components/responses/Error" }
     patch:
       summary: 部分更新（instruction_doc 变更时 instruction_version 自增）
+      operationId: patchAgent
+      tags: [agents]
       requestBody:
         required: true
         content:
@@ -197,6 +230,8 @@ paths:
         default: { $ref: "#/components/responses/Error" }
     delete:
       summary: 删除（仍有数据源绑定时 409）
+      operationId: deleteAgent
+      tags: [agents]
       responses:
         "204": { description: 已删除 }
         default: { $ref: "#/components/responses/Error" }
@@ -204,6 +239,8 @@ paths:
   /api/v1/datasource-groups:
     get:
       summary: 列出编组（keyset 分页）
+      operationId: listDatasourceGroups
+      tags: [datasource-groups]
       parameters:
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
@@ -223,6 +260,8 @@ paths:
         default: { $ref: "#/components/responses/Error" }
     post:
       summary: 创建编组
+      operationId: createDatasourceGroup
+      tags: [datasource-groups]
       parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
       requestBody:
         required: true
@@ -241,6 +280,8 @@ paths:
     parameters: [{ $ref: "#/components/parameters/ID" }]
     get:
       summary: 编组详情
+      operationId: getDatasourceGroup
+      tags: [datasource-groups]
       responses:
         "200":
           description: 详情
@@ -250,6 +291,8 @@ paths:
         default: { $ref: "#/components/responses/Error" }
     patch:
       summary: 重命名（kind 不可变——主备/集群语义不同，改 kind = 重建组）
+      operationId: patchDatasourceGroup
+      tags: [datasource-groups]
       requestBody:
         required: true
         content:
@@ -268,6 +311,8 @@ paths:
         default: { $ref: "#/components/responses/Error" }
     delete:
       summary: 删除（仍有成员时 409）
+      operationId: deleteDatasourceGroup
+      tags: [datasource-groups]
       responses:
         "204": { description: 已删除 }
         default: { $ref: "#/components/responses/Error" }
@@ -275,6 +320,8 @@ paths:
   /api/v1/connectors:
     get:
       summary: 列出 Connector（只读；注册/心跳协议见 spec-1.2）
+      operationId: listConnectors
+      tags: [connectors]
       parameters:
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
@@ -296,6 +343,8 @@ paths:
   /api/v1/connectors/{id}:
     get:
       summary: Connector 详情
+      operationId: getConnector
+      tags: [connectors]
       parameters: [{ $ref: "#/components/parameters/ID" }]
       responses:
         "200":
