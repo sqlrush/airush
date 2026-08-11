@@ -1,0 +1,31 @@
+// Connector 注册面（spec-1.2 §2.3）：server-TLS + 一次性 enrollment token。
+// 私钥永不离开客户侧——客户端本地生成密钥对，仅上送 CSR。
+syntax = "proto3";
+
+package connector.v1;
+
+option go_package = "github.com/sqlrush/airush/proto/gen/go/connector/v1;connectorv1";
+
+// EnrollmentService 由 gateway 暴露（server-TLS 端口），转 console 内部 API 校验签发。
+service EnrollmentService {
+  // Enroll 用一次性 token 换取 mTLS 客户端证书。token 一次性作废；
+  // 失败语义经 grpc status，details 携带 AR_CONNECTOR_* 错误码。
+  rpc Enroll(EnrollRequest) returns (EnrollResponse);
+}
+
+message EnrollRequest {
+  // 一次性注册令牌（console 创建 connector 时签发，TTL 15 分钟）。
+  string enrollment_token = 1;
+  // PEM 编码 CSR；CN 由平台侧忽略并强制改写为 connector_id。
+  bytes csr_pem = 2;
+  // 客户端版本（观测用，非鉴别因子）。
+  string connector_version = 3;
+}
+
+message EnrollResponse {
+  string connector_id = 1;
+  // 签发的客户端证书（90 天，CN=connector_id）。
+  bytes certificate_pem = 2;
+  // 会话端 mTLS 服务端信任链。
+  bytes ca_bundle_pem = 3;
+}
