@@ -1,6 +1,6 @@
 # spec-1.17 直连接入模式（AD-2② 平台直连数据库）
 
-> **DRAFT — 待 user approve**（Stage 1 严格事前批准：approve 前不编码）
+> **frozen** — user approve 2026-08-11（Q1-Q4 全采★；复用 pgx 无新依赖）
 
 ## Header / 元数据
 
