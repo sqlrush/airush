@@ -165,10 +165,15 @@ generate-proto: $(BUF)
 	@cd proto && $(BUF) lint
 	@cd proto && PATH="$(TOOLS_BIN):$$PATH" $(BUF) generate
 
-## proto-breaking: 对 main 的兼容性检查（CI 调用；本地需要完整 git 历史）
+## proto-breaking: 对 main 的兼容性检查（CI 调用；本地需要完整 git 历史）。
+## 基线无 proto 模块时（首个引入 proto 的 PR）跳过——无可对比的契约。
 proto-breaking: $(BUF)
-	@cd proto && $(BUF) breaking --against '../.git#branch=origin/main,subdir=proto' || \
-		{ echo "proto 破坏性变更被拒（spec-1.2 §3 兼容性契约）"; exit 1; }
+	@if git cat-file -e origin/main:proto/buf.yaml 2>/dev/null; then \
+		cd proto && $(BUF) breaking --against '../.git#branch=origin/main,subdir=proto' || \
+			{ echo "proto 破坏性变更被拒（spec-1.2 §3 兼容性契约）"; exit 1; }; \
+	else \
+		echo "proto-breaking: origin/main 无 proto 基线，跳过（首个引入 proto 的变更）"; \
+	fi
 
 ## migrate-new: 生成下一编号迁移文件对（spec-0.6 D2）
 migrate-new:
