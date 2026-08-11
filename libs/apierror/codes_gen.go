@@ -26,6 +26,11 @@ const (
 	CodeAgentNotFound Code = "AR_AGENT_NOT_FOUND"
 	CodeAliasConflict Code = "AR_ALIAS_CONFLICT"
 	CodeIdempotencyReplay Code = "AR_IDEMPOTENCY_REPLAY"
+	CodeConnectorEnrollTokenInvalid Code = "AR_CONNECTOR_ENROLL_TOKEN_INVALID"
+	CodeConnectorAlreadyEnrolled Code = "AR_CONNECTOR_ALREADY_ENROLLED"
+	CodeConnectorRevoked Code = "AR_CONNECTOR_REVOKED"
+	CodeConnectorOffline Code = "AR_CONNECTOR_OFFLINE"
+	CodeSvcUnauthenticated Code = "AR_SVC_UNAUTHENTICATED"
 )
 
 var codeMeta = map[Code]Meta{
@@ -51,4 +56,9 @@ var codeMeta = map[Code]Meta{
 	CodeAgentNotFound: {Level: "E3", HTTP: 404, Message: "智能体不存在", Deprecated: false},
 	CodeAliasConflict: {Level: "E3", HTTP: 409, Message: "别名已被占用", Deprecated: false},
 	CodeIdempotencyReplay: {Level: "E1", HTTP: 409, Message: "幂等键已用于不同的请求", Deprecated: false},
+	CodeConnectorEnrollTokenInvalid: {Level: "E2", HTTP: 401, Message: "注册令牌无效或已过期", Deprecated: false},
+	CodeConnectorAlreadyEnrolled: {Level: "E3", HTTP: 409, Message: "该接入器已完成注册", Deprecated: false},
+	CodeConnectorRevoked: {Level: "E2", HTTP: 403, Message: "该接入器已被吊销", Deprecated: false},
+	CodeConnectorOffline: {Level: "E5", HTTP: 503, Message: "数据源接入器离线", Deprecated: false},
+	CodeSvcUnauthenticated: {Level: "E2", HTTP: 401, Message: "服务间认证失败", Deprecated: false},
 }

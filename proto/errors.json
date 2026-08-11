@@ -1,6 +1,6 @@
 {
   "$comment": "错误码注册表 SSOT（spec-0.8 D1）。生成: make generate → libs/apierror/codes_gen.go + skills/airush_skills/error_codes_gen.py。已合并 main 的码禁删禁改语义（CI 守护）；弃用置 deprecated=true。level: E1 用户可修复/E2 认证授权/E3 资源/E4 平台内部/E5 上游依赖/E6 配额限流（spec-0.8 §2.3）。message 为面向用户的中文模板，禁运行时拼接内部细节（动态内容走 details）。",
-  "domains": ["COMMON", "AUTH", "TENANT", "VALIDATION", "INTERNAL", "UPSTREAM", "QUOTA", "DATASOURCE", "AGENT", "ALIAS", "IDEMPOTENCY"],
+  "domains": ["COMMON", "AUTH", "TENANT", "VALIDATION", "INTERNAL", "UPSTREAM", "QUOTA", "DATASOURCE", "AGENT", "ALIAS", "IDEMPOTENCY", "CONNECTOR", "SVC"],
   "codes": [
     { "code": "AR_VALIDATION_FAILED", "level": "E1", "http": 400, "message": "请求参数不合法", "description": "schema 校验失败，details 携带逐字段原因" },
     { "code": "AR_COMMON_NOT_FOUND", "level": "E3", "http": 404, "message": "请求的资源不存在", "description": "通用资源缺失；有专属码的域（如 TENANT）优先用专属码" },
@@ -23,6 +23,11 @@
     { "code": "AR_DATASOURCE_IN_USE", "level": "E3", "http": 409, "message": "数据源正被引用，无法删除", "description": "spec-1.1：被 agent 绑定或组内成员时拒绝删除，details 列出引用方" },
     { "code": "AR_AGENT_NOT_FOUND", "level": "E3", "http": 404, "message": "智能体不存在", "description": "spec-1.1：agents 按 id 查无（本租户视图内）" },
     { "code": "AR_ALIAS_CONFLICT", "level": "E3", "http": 409, "message": "别名已被占用", "description": "spec-1.1：(tenant_id, alias) 唯一约束冲突" },
-    { "code": "AR_IDEMPOTENCY_REPLAY", "level": "E1", "http": 409, "message": "幂等键已用于不同的请求", "description": "spec-1.1：同 Idempotency-Key 携带不同 payload（request_hash 不匹配）" }
+    { "code": "AR_IDEMPOTENCY_REPLAY", "level": "E1", "http": 409, "message": "幂等键已用于不同的请求", "description": "spec-1.1：同 Idempotency-Key 携带不同 payload（request_hash 不匹配）" },
+    { "code": "AR_CONNECTOR_ENROLL_TOKEN_INVALID", "level": "E2", "http": 401, "message": "注册令牌无效或已过期", "description": "spec-1.2：enrollment token 不存在/已用/超 TTL；details 不区分具体原因（防枚举）" },
+    { "code": "AR_CONNECTOR_ALREADY_ENROLLED", "level": "E3", "http": 409, "message": "该接入器已完成注册", "description": "spec-1.2：非 pending 状态重复 enroll" },
+    { "code": "AR_CONNECTOR_REVOKED", "level": "E2", "http": 403, "message": "该接入器已被吊销", "description": "spec-1.2：吊销后的握手/注册请求" },
+    { "code": "AR_CONNECTOR_OFFLINE", "level": "E5", "http": 503, "message": "数据源接入器离线", "description": "spec-1.2 预埋：指令下发时无活跃会话（正式消费在执行链）" },
+    { "code": "AR_SVC_UNAUTHENTICATED", "level": "E2", "http": 401, "message": "服务间认证失败", "description": "spec-1.2：内部服务 API service token 缺失或无效" }
   ]
 }

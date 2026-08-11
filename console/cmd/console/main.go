@@ -25,6 +25,10 @@ type appConfig struct {
 	CredentialKEK   string `env:"CREDENTIAL_KEK"     secret:"true"`
 	CredentialKEKID string `env:"CREDENTIAL_KEK_ID"  default:"v1"`
 	DefaultTenantID string `env:"DEFAULT_TENANT_ID"  default:"00000000-0000-0000-0000-000000000001"`
+	// spec-1.2：服务间认证与内部 CA（--serve 必填，serveMain 校验）。
+	SvcToken string `env:"SVC_TOKEN" secret:"true"`
+	CACert   string `env:"CA_CERT"   secret:"true"`
+	CAKey    string `env:"CA_KEY"    secret:"true"`
 }
 
 // version 由构建期 -ldflags 注入（spec-0.10/0.11 定版链路）。
@@ -62,6 +66,10 @@ func main() {
 		return
 	}
 
+	if args := flag.Args(); len(args) > 0 && args[0] == "pki-init" {
+		pkiInitMain()
+		return
+	}
 	if args := flag.Args(); len(args) > 0 && args[0] == "migrate" {
 		if cfg.DBURL == "" {
 			fmt.Fprintln(os.Stderr, "error: AIRUSH_CONSOLE_DB_URL 未设置（migrate 需要控制面 PG 连接串）")
