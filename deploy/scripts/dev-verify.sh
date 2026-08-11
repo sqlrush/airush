@@ -14,14 +14,17 @@ echo "== pods ready =="
 echo "== migrate applied（领域表 + 版本） =="
 v=$("${KCTL[@]}" exec airush-pg-0 -- psql -U postgres -d airush -tAc \
   "SELECT version || ':' || dirty FROM schema_migrations") || fail "查询 schema_migrations 失败"
-[ "$v" = "2:false" ] || fail "迁移版本异常: $v（期望 2:false，spec-1.1 0002 就位）"
+[ "$v" = "3:false" ] || fail "迁移版本异常: $v（期望 3:false，spec-1.2 0003 就位）"
 t=$("${KCTL[@]}" exec airush-pg-0 -- psql -U postgres -d airush -tAc \
   "SELECT count(*) FROM information_schema.tables WHERE table_name IN ('tenants','datasources','agents')")
 [ "$t" = "3" ] || fail "领域表缺失（tenants/datasources/agents 应为 3，得 $t）"
+col=$("${KCTL[@]}" exec airush-pg-0 -- psql -U postgres -d airush -tAc \
+  "SELECT count(*) FROM information_schema.columns WHERE table_name='connectors' AND column_name='enroll_token_hash'")
+[ "$col" = "1" ] || fail "connectors.enroll_token_hash 缺失（0003 未应用）"
 seed=$("${KCTL[@]}" exec airush-pg-0 -- psql -U postgres -d airush -tAc \
   "SELECT count(*) FROM tenants WHERE slug='dev'")
 [ "$seed" = "1" ] || fail "dev 租户 seed 缺失"
-echo "  migrate version=2 dirty=false, 领域表与 seed 就位"
+echo "  migrate version=3 dirty=false, 领域表/seed/接入列就位"
 
 echo "== gateway /healthz（port-forward） =="
 "${KCTL[@]}" port-forward svc/airush-gateway 18081:8081 >/dev/null 2>&1 &
@@ -52,6 +55,9 @@ leak=$("${KCTL[@]}" exec airush-pg-0 -- psql -U postgres -d airush -tAc \
 echo "  console API OK（201/幂等 409、列表可见、密文无明文）"
 
 echo "== connector 接入 e2e（spec-1.2：enroll → session → online） =="
+# 幂等前置（spec-0.12 §3 从零语义）：清理上次遗留的 dev-verify-conn
+"${KCTL[@]}" exec airush-pg-0 -- psql -U postgres -d airush -c \
+  "DELETE FROM connectors WHERE name='dev-verify-conn'" >/dev/null 2>&1
 "${KCTL[@]}" port-forward svc/airush-console 18080:8080 >/dev/null 2>&1 &
 PF=$!
 sleep 2
@@ -65,10 +71,7 @@ kill $PF 2>/dev/null
 # 在集群内跑 connector：initContainer 注册（写证书到 emptyDir），主容器维持会话。
 # distroless 无 shell，故用 initContainer + 共享卷（entrypoint=/app）。
 "${KCTL[@]}" delete pod airush-devverify-connector --ignore-not-found >/dev/null 2>&1
-env_common='
-            - { name: AIRUSH_CONNECTOR_CONFIG_DIR, value: /tmp/conn }
-            - { name: AIRUSH_CONNECTOR_ENROLL_ADDR, value: "airush-gateway:8082" }
-            - { name: AIRUSH_CONNECTOR_SESSION_ADDR, value: "airush-gateway:8083" }'
+img="${REGISTRY:-ghcr.io/sqlrush/airush}/connector:latest"
 "${KCTL[@]}" apply -f - >/dev/null <<YAML
 apiVersion: v1
 kind: Pod
@@ -81,21 +84,30 @@ spec:
       emptyDir: {}
   initContainers:
     - name: enroll
-      image: ${REGISTRY:-ghcr.io/sqlrush/airush}/connector:latest
+      image: ${img}
       imagePullPolicy: Never
       args: ["--enroll"]
-      volumeMounts: [ { name: conn, mountPath: /tmp/conn } ]
-      env:${env_common}
+      volumeMounts:
+        - { name: conn, mountPath: /tmp/conn }
+      env:
+        - { name: AIRUSH_CONNECTOR_CONFIG_DIR, value: /tmp/conn }
+        - { name: AIRUSH_CONNECTOR_ENROLL_ADDR, value: "airush-gateway:8082" }
+        - { name: AIRUSH_CONNECTOR_SESSION_ADDR, value: "airush-gateway:8083" }
         - { name: AIRUSH_CONNECTOR_ENROLL_TOKEN, value: "${tok}" }
         - name: AIRUSH_CONNECTOR_ENROLL_CA_PEM
-          valueFrom: { secretKeyRef: { name: airush-connector-pki, key: ca.crt } }
+          valueFrom:
+            secretKeyRef: { name: airush-connector-pki, key: ca.crt }
   containers:
     - name: run
-      image: ${REGISTRY:-ghcr.io/sqlrush/airush}/connector:latest
+      image: ${img}
       imagePullPolicy: Never
       args: ["--run"]
-      volumeMounts: [ { name: conn, mountPath: /tmp/conn } ]
-      env:${env_common}
+      volumeMounts:
+        - { name: conn, mountPath: /tmp/conn }
+      env:
+        - { name: AIRUSH_CONNECTOR_CONFIG_DIR, value: /tmp/conn }
+        - { name: AIRUSH_CONNECTOR_ENROLL_ADDR, value: "airush-gateway:8082" }
+        - { name: AIRUSH_CONNECTOR_SESSION_ADDR, value: "airush-gateway:8083" }
 YAML
 ok=""
 for i in $(seq 1 30); do
