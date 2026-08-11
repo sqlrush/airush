@@ -202,4 +202,5 @@ SPEC（编码前讨论） → TDD 编码 → 集成测试 → Code Review → Re
 | spec-0.11 | **shipped**（T1-T7 过；v0.0.1-rc.1 全链路实弹演练成功） | 2026-08-09 起草；08-10 实施完成 |
 | spec-0.12 | **shipped**（验收签署，自动项 7/7） | 2026-08-09 起草；08-10 验收执行 |
 | spec-1.1 | **shipped**（T1-T10 全过；覆盖率合并口径 81.9%；dev-verify 端到端）| 2026-08-10 起草、approve、实施完成 |
+| spec-1.2 | DRAFT · **待 user approve**（参照模板级；含 grpc/protobuf/buf 依赖审批项） | 2026-08-11 起草 |
 | 其余 Stage 1 specs | 按序起草（严格事前 approve） | — |
