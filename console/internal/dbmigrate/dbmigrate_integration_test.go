@@ -43,16 +43,15 @@ func TestMigrateLifecycleAndRLS(t *testing.T) {
 		t.Fatalf("idempotent up: %v", err)
 	}
 
-	// T2：down = 回滚 1 步——先退 0002（tenants 仍在），再退 0001（tenants 消失）；up 全量回归
+	// T2：down = 回滚 1 步（单步后 0001 基座必须仍在）；随后回滚到底再全量回归。
+	// 断言与迁移总数解耦——每加一个迁移不应破坏本测试（0002/0003 两次教训固化）。
 	if err := RunWithURL(pg.ConnString, []string{"down"}); err != nil {
-		t.Fatalf("down 0002: %v", err)
+		t.Fatalf("single-step down: %v", err)
 	}
 	if n := countRows(t, db, `SELECT count(*) FROM information_schema.tables WHERE table_name = 'tenants'`); n != 1 {
 		t.Fatalf("tenants table gone after single-step down (want it kept)")
 	}
-	if err := RunWithURL(pg.ConnString, []string{"down"}); err != nil {
-		t.Fatalf("down 0001: %v", err)
-	}
+	downAll(t, pg.ConnString)
 	if n := countRows(t, db, `SELECT count(*) FROM information_schema.tables WHERE table_name = 'tenants'`); n != 0 {
 		t.Fatalf("tenants table still present after full down")
 	}
@@ -118,6 +117,35 @@ func verifyRLSTemplate(t *testing.T, db *sql.DB) {
 			t.Fatalf("owner sees %d rows, want 0 (FORCE RLS)", got)
 		}
 	})
+}
+
+// downAll 循环单步回滚直到无迁移可退（版本数无关；上限防御死循环）。
+func downAll(t *testing.T, connString string) {
+	t.Helper()
+	for i := 0; i < 32; i++ {
+		if err := RunWithURL(connString, []string{"down"}); err != nil {
+			return
+		}
+	}
+	t.Fatal("downAll: 32 steps without exhausting migrations")
+}
+
+// downTo 回滚到指定版本（读 schema_migrations 判定）。
+func downTo(t *testing.T, db *sql.DB, connString string, target int) {
+	t.Helper()
+	for i := 0; i < 32; i++ {
+		var v int
+		if err := db.QueryRow(`SELECT version FROM schema_migrations`).Scan(&v); err != nil {
+			t.Fatalf("read version: %v", err)
+		}
+		if v <= target {
+			return
+		}
+		if err := RunWithURL(connString, []string{"down"}); err != nil {
+			t.Fatalf("down towards %d: %v", target, err)
+		}
+	}
+	t.Fatalf("downTo(%d): not reached in 32 steps", target)
 }
 
 func inTx(t *testing.T, db *sql.DB, fn func(tx *sql.Tx)) {

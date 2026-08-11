@@ -40,13 +40,11 @@ func TestDomainModelMigration(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 
-	// up → down → up 幂等（down 后领域表全部消失）
+	// up → 回滚到 0001 → up 幂等（0002 之上还有后续迁移，用版本定位不数步数）
 	if err := RunWithURL(pg.ConnString, []string{"up"}); err != nil {
 		t.Fatalf("first up: %v", err)
 	}
-	if err := RunWithURL(pg.ConnString, []string{"down"}); err != nil {
-		t.Fatalf("down: %v", err)
-	}
+	downTo(t, db, pg.ConnString, 1)
 	if n := countRows(t, db, `SELECT count(*) FROM information_schema.tables
 		WHERE table_name = ANY('{users,datasources,agents}')`); n != 0 {
 		t.Fatalf("domain tables still present after down: %d", n)
