@@ -47,11 +47,11 @@ func Load(certPEM, keyPEM []byte) (*CA, error) {
 	if keyBlock == nil {
 		return nil, errors.New("pki: CA key PEM invalid")
 	}
-	key, err := x509.ParseECPrivateKey(keyBlock.Bytes)
+	signer, err := parsePrivateKey(keyBlock.Bytes)
 	if err != nil {
 		return nil, fmt.Errorf("pki: parse CA key: %w", err)
 	}
-	return &CA{cert: cert, signer: key, certPEM: append([]byte(nil), certPEM...)}, nil
+	return &CA{cert: cert, signer: signer, certPEM: append([]byte(nil), certPEM...)}, nil
 }
 
 // Generate 生成新 CA（`console pki-init` 与测试用；10 年，ECDSA P-256）。
@@ -137,6 +137,24 @@ func Fingerprint(certPEM []byte) (string, error) {
 	}
 	sum := sha256.Sum256(block.Bytes)
 	return hex.EncodeToString(sum[:]), nil
+}
+
+// parsePrivateKey 兼容 EC（pki-init 产物）与 RSA/PKCS8（Helm genCA 产物）；
+// 返回 crypto.Signer，签发路径对密钥类型无关。
+func parsePrivateKey(der []byte) (crypto.Signer, error) {
+	if k, err := x509.ParsePKCS8PrivateKey(der); err == nil {
+		if s, ok := k.(crypto.Signer); ok {
+			return s, nil
+		}
+		return nil, errors.New("pki: PKCS8 key is not a signer")
+	}
+	if k, err := x509.ParseECPrivateKey(der); err == nil {
+		return k, nil
+	}
+	if k, err := x509.ParsePKCS1PrivateKey(der); err == nil {
+		return k, nil
+	}
+	return nil, errors.New("pki: unsupported private key format")
 }
 
 func randomSerial() (*big.Int, error) {
