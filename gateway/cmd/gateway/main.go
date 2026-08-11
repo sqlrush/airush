@@ -21,6 +21,14 @@ type appConfig struct {
 	Listen       string  `env:"LISTEN_ADDR"        default:":8081"`
 	OTLPEndpoint string  `env:"OTLP_ENDPOINT"      default:"" common:"true"`
 	SampleRatio  float64 `env:"TRACE_SAMPLE_RATIO" default:"1.0" common:"true"`
+	// spec-1.2 接入面：注册（server-TLS）与会话（mTLS）两个 gRPC 端口 + console 内部 API。
+	EnrollListen  string `env:"ENROLL_LISTEN"   default:":8082"`
+	SessionListen string `env:"SESSION_LISTEN"  default:":8083"`
+	ConsoleURL    string `env:"CONSOLE_URL"     default:""`
+	SvcToken      string `env:"SVC_TOKEN"       secret:"true"`
+	TLSCertPEM    string `env:"TLS_CERT_PEM"    secret:"true"`
+	TLSKeyPEM     string `env:"TLS_KEY_PEM"     secret:"true"`
+	ClientCAPEM   string `env:"CLIENT_CA_PEM"   secret:"true"`
 }
 
 // version 由构建期 -ldflags 注入（spec-0.10/0.11 定版链路）。

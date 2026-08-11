@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"os/signal"
 	"syscall"
@@ -12,6 +13,8 @@ import (
 
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/sqlrush/airush/gateway/internal/accept"
+	"github.com/sqlrush/airush/gateway/internal/consoleclient"
 	"github.com/sqlrush/airush/libs/apierror"
 	"github.com/sqlrush/airush/libs/obs"
 )
@@ -38,12 +41,22 @@ func runServer(cfg appConfig, provider *obs.Provider, version string) error {
 	go func() { errCh <- srv.ListenAndServe() }()
 	provider.Logger.Info("gateway serving", "listen", cfg.Listen)
 
+	// spec-1.2：接入面（注册/会话 gRPC）与 HTTP 观测面同进程；ConsoleURL 空则跳过
+	// （保留纯观测演示形态供 Stage 0 验收链路复用）。
+	accepter, err := startAccept(ctx, cfg, provider, errCh)
+	if err != nil {
+		return err
+	}
+
 	select {
 	case err := <-errCh:
 		return fmt.Errorf("serve: %w", err)
 	case <-ctx.Done():
 	}
 
+	if accepter != nil {
+		accepter.GracefulStop("gateway shutting down")
+	}
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
@@ -52,6 +65,34 @@ func runServer(cfg appConfig, provider *obs.Provider, version string) error {
 	provider.Shutdown(shutdownCtx)
 	provider.Logger.Info("gateway stopped")
 	return nil
+}
+
+// startAccept 装配并启动 Connector 接入面；ConsoleURL 空时返回 nil（观测演示形态）。
+func startAccept(_ context.Context, cfg appConfig, provider *obs.Provider, errCh chan error) (*accept.Servers, error) {
+	if cfg.ConsoleURL == "" {
+		provider.Logger.Info("accept disabled (no CONSOLE_URL); observability-only mode")
+		return nil, nil
+	}
+	console := consoleclient.New(cfg.ConsoleURL, cfg.SvcToken)
+	servers, err := accept.Build(console, accept.TLSMaterial{
+		ServerCertPEM: []byte(cfg.TLSCertPEM),
+		ServerKeyPEM:  []byte(cfg.TLSKeyPEM),
+		ClientCAPEM:   []byte(cfg.ClientCAPEM),
+	}, accept.DefaultSessionConfig(), accept.Deps{Logger: provider.Logger})
+	if err != nil {
+		return nil, fmt.Errorf("build accept servers: %w", err)
+	}
+	enrollLn, err := net.Listen("tcp", cfg.EnrollListen)
+	if err != nil {
+		return nil, fmt.Errorf("listen enroll: %w", err)
+	}
+	sessionLn, err := net.Listen("tcp", cfg.SessionListen)
+	if err != nil {
+		return nil, fmt.Errorf("listen session: %w", err)
+	}
+	go func() { errCh <- servers.Serve(enrollLn, sessionLn) }()
+	provider.Logger.Info("accept serving", "enroll", cfg.EnrollListen, "session", cfg.SessionListen)
+	return servers, nil
 }
 
 // demoHandler 一次请求产生三信号（spec-0.9 D5）：结构化日志（含 trace_id）、
