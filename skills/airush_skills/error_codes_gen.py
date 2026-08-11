@@ -23,4 +23,9 @@ ERROR_CODES: dict[str, dict[str, object]] = {
     "AR_AGENT_NOT_FOUND": {"level": "E3", "http": 404, "message": "智能体不存在", "deprecated": False},
     "AR_ALIAS_CONFLICT": {"level": "E3", "http": 409, "message": "别名已被占用", "deprecated": False},
     "AR_IDEMPOTENCY_REPLAY": {"level": "E1", "http": 409, "message": "幂等键已用于不同的请求", "deprecated": False},
+    "AR_CONNECTOR_ENROLL_TOKEN_INVALID": {"level": "E2", "http": 401, "message": "注册令牌无效或已过期", "deprecated": False},
+    "AR_CONNECTOR_ALREADY_ENROLLED": {"level": "E3", "http": 409, "message": "该接入器已完成注册", "deprecated": False},
+    "AR_CONNECTOR_REVOKED": {"level": "E2", "http": 403, "message": "该接入器已被吊销", "deprecated": False},
+    "AR_CONNECTOR_OFFLINE": {"level": "E5", "http": 503, "message": "数据源接入器离线", "deprecated": False},
+    "AR_SVC_UNAUTHENTICATED": {"level": "E2", "http": 401, "message": "服务间认证失败", "deprecated": False},
 }

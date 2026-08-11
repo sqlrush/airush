@@ -62,6 +62,16 @@ spec:
               value: {{ .Values.console.credentialKekId | quote }}
             - name: AIRUSH_CONSOLE_DEFAULT_TENANT_ID
               value: {{ .Values.console.defaultTenantId | quote }}
+            {{- $pkiSecret := .Values.gateway.accept.externalCASecret | default (printf "%s-connector-pki" .Release.Name) }}
+            - name: AIRUSH_CONSOLE_SVC_TOKEN
+              valueFrom:
+                secretKeyRef: { name: {{ $pkiSecret }}, key: svc-token }
+            - name: AIRUSH_CONSOLE_CA_CERT
+              valueFrom:
+                secretKeyRef: { name: {{ $pkiSecret }}, key: ca.crt }
+            - name: AIRUSH_CONSOLE_CA_KEY
+              valueFrom:
+                secretKeyRef: { name: {{ $pkiSecret }}, key: ca.key }
             - name: AIRUSH_COMMON_LOG_LEVEL
               value: {{ .Values.common.logLevel | quote }}
             - name: AIRUSH_COMMON_OTLP_ENDPOINT

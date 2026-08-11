@@ -1,0 +1,15 @@
+# buf 契约配置（spec-1.2 D1）。lint = 契约风格闸门；breaking = 兼容性守护（CI 对 main）。
+version: v2
+modules:
+  - path: .
+lint:
+  use:
+    - STANDARD
+  except:
+    # 流式会话的帧类型按 spec-1.2 §2.2 定版命名（ClientFrame/ServerFrame 语义优先于
+    # buf 的 <Rpc>Request/Response 命名惯例）；一元 RPC 不适用本豁免
+    - RPC_REQUEST_STANDARD_NAME
+    - RPC_RESPONSE_STANDARD_NAME
+breaking:
+  use:
+    - WIRE_JSON

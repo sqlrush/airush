@@ -8,6 +8,25 @@
 
 ### Added
 
+- Connector 核心：注册 / mTLS 长连接 / 心跳 / 指令通道（spec-1.2）：
+  - proto 契约与 buf 生成链（connector/v1 enrollment+session，幂等守护 + breaking 检测入 CI）；
+  - 迁移 0003：connectors 六态状态机 + 一次性注册令牌哈希列 + 吊销时间戳；
+  - 注册流程：一次性 token（15min TTL，仅哈希落库）→ CSR → 平台内部 CA 签发 90 天
+    客户端证书（CN=connector_id，SAN 绑租户）→ 指纹落库；私钥永不出客户侧；
+  - gateway 接入面：enrollment（server-TLS）+ session（mTLS 双向）两个 gRPC 端口、
+    会话注册表（新连踢旧连）、心跳状态机（online/degraded/offline）、优雅 Drain；
+  - connector 二进制：--enroll / --run，本地 0600 凭据存储、指数退避重连、PING/ECHO 处理器；
+  - console 内部服务 API（svcapi，service token 认证）承载注册校验/签发/状态记录，
+    gateway 不触碰控制面 schema；
+  - 新错误码 5 个（AR_CONNECTOR_*/AR_SVC_UNAUTHENTICATED）；
+  - Helm：连接器 PKI Secret（内部 CA + gateway 服务端证书，lookup 复用避免重生成）、
+    gateway 接入端口、console CA/svc-token 接线；dev-verify 增 connector enroll→online e2e。
+
+### Fixed
+
+- connector 会话循环并发 stream.Send 隐患：改单发送方模型（集成测试捕获，spec-1.2）；
+- pki.Load 兼容 RSA/PKCS8 私钥（Helm genCA 产物），修复 dev 部署 console CA 装载失败。
+
 - 控制面领域模型与 API 骨架（spec-1.1）：
   - 迁移 0002：users/connectors/datasource_groups/agents/datasource_credentials/
     datasources/datasource_aliases/idempotency_keys 八表，全部租户表套 RLS 模板四要素，

@@ -5,7 +5,7 @@
 SHELL := /bin/bash
 GO_MODULES := console connector gateway agent-runtime
 # GO_ALL 含非组件模块（testkit 等）：参与 lint/test/cover，不产二进制
-GO_ALL := $(GO_MODULES) testkit libs/config libs/apierror libs/obs
+GO_ALL := $(GO_MODULES) testkit libs/config libs/apierror libs/obs proto/gen/go
 
 # 本仓库使用 go.work 工作区；强制 -mod=readonly，避免用户全局 -mod=mod 与
 # workspace 模式冲突（workspace 下 -mod 仅允许 readonly/vendor）。
@@ -147,6 +147,34 @@ integration-test-py: docker-check
 generate:
 	@cd libs/apierror && $(TOOL_ENV) $(GO) run ./gen
 
+# proto 工具链钉版（spec-1.2 D1，沿 golangci 唯一钉点方案）
+BUF_VERSION := v1.59.0
+PROTOC_GEN_GO_VERSION := v1.36.11
+PROTOC_GEN_GO_GRPC_VERSION := v1.6.1
+BUF := $(TOOLS_BIN)/buf-$(BUF_VERSION)
+
+$(BUF):
+	@mkdir -p $(TOOLS_BIN)
+	GOFLAGS= GOBIN=$(TOOLS_BIN) $(TOOL_ENV) $(GO) install github.com/bufbuild/buf/cmd/buf@$(BUF_VERSION)
+	@mv $(TOOLS_BIN)/buf $(BUF)
+	GOFLAGS= GOBIN=$(TOOLS_BIN) $(TOOL_ENV) $(GO) install google.golang.org/protobuf/cmd/protoc-gen-go@$(PROTOC_GEN_GO_VERSION)
+	GOFLAGS= GOBIN=$(TOOLS_BIN) $(TOOL_ENV) $(GO) install google.golang.org/grpc/cmd/protoc-gen-go-grpc@$(PROTOC_GEN_GO_GRPC_VERSION)
+
+## generate-proto: proto 契约 lint + 代码生成（spec-1.2 D1；CI 幂等守护）
+generate-proto: $(BUF)
+	@cd proto && $(BUF) lint
+	@cd proto && PATH="$(TOOLS_BIN):$$PATH" $(BUF) generate
+
+## proto-breaking: 对 main 的兼容性检查（CI 调用；本地需要完整 git 历史）。
+## 基线无 proto 模块时（首个引入 proto 的 PR）跳过——无可对比的契约。
+proto-breaking: $(BUF)
+	@if git cat-file -e origin/main:proto/buf.yaml 2>/dev/null; then \
+		cd proto && $(BUF) breaking --against '../.git#branch=origin/main,subdir=proto' || \
+			{ echo "proto 破坏性变更被拒（spec-1.2 §3 兼容性契约）"; exit 1; }; \
+	else \
+		echo "proto-breaking: origin/main 无 proto 基线，跳过（首个引入 proto 的变更）"; \
+	fi
+
 ## migrate-new: 生成下一编号迁移文件对（spec-0.6 D2）
 migrate-new:
 	@test -n "$(name)" || { echo "用法: make migrate-new name=<snake_case>"; exit 2; }
@@ -230,8 +258,8 @@ KIND_CLUSTER := airush-dev
 dev-up:
 	@kind get clusters 2>/dev/null | grep -qx $(KIND_CLUSTER) || \
 		kind create cluster --config deploy/kind/config.yaml
-	@$(MAKE) image-gateway image-console
-	kind load docker-image $(REGISTRY)/gateway:latest $(REGISTRY)/console:latest --name $(KIND_CLUSTER)
+	@$(MAKE) image-gateway image-console image-connector
+	kind load docker-image $(REGISTRY)/gateway:latest $(REGISTRY)/console:latest $(REGISTRY)/connector:latest --name $(KIND_CLUSTER)
 	helm upgrade --install airush deploy/charts/airush \
 		-f deploy/charts/airush/values-dev.yaml --wait --timeout 5m
 	@kubectl --context kind-$(KIND_CLUSTER) get pods

@@ -99,10 +99,12 @@ jobs:
         run: |
           deploy/scripts/check-migration-seq.sh
           make generate
-          git diff --exit-code || { echo "ERROR: 生成物与 SSOT 不一致，请本地 make generate 后提交"; exit 1; }
+          make generate-proto
+          git diff --exit-code || { echo "ERROR: 生成物与 SSOT 不一致，请本地 make generate / generate-proto 后提交"; exit 1; }
           git fetch --no-tags --depth=50 origin main
           deploy/scripts/check-migration-immutable.sh origin/main
           deploy/scripts/check-error-codes-immutable.sh origin/main
+          make proto-breaking
 
   test:
     name: ci/test

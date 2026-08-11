@@ -1,0 +1,10 @@
+# 生成配置：Go 消息 + gRPC stub 落 proto/gen/go（独立 module，spec-1.2 §8 Q4）。
+# 插件经 bin/tools 钉版安装（Makefile），禁全局漂移版本。
+version: v2
+plugins:
+  - local: protoc-gen-go
+    out: gen/go
+    opt: module=github.com/sqlrush/airush/proto/gen/go
+  - local: protoc-gen-go-grpc
+    out: gen/go
+    opt: module=github.com/sqlrush/airush/proto/gen/go

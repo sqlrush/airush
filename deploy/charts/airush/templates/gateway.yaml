@@ -24,6 +24,10 @@ spec:
           args: ["--serve"]
           ports:
             - containerPort: 8081
+            {{- if .Values.gateway.accept.enabled }}
+            - containerPort: 8082
+            - containerPort: 8083
+            {{- end }}
           env:
             - name: AIRUSH_GATEWAY_LISTEN_ADDR
               value: {{ .Values.gateway.listen | quote }}
@@ -35,6 +39,23 @@ spec:
               value: {{ .Values.common.traceSampleRatio | quote }}
             - name: AIRUSH_ENV
               value: production
+            {{- if .Values.gateway.accept.enabled }}
+            {{- $pkiSecret := .Values.gateway.accept.externalCASecret | default (printf "%s-connector-pki" .Release.Name) }}
+            - name: AIRUSH_GATEWAY_CONSOLE_URL
+              value: {{ printf "http://%s-console:8080" .Release.Name | quote }}
+            - name: AIRUSH_GATEWAY_SVC_TOKEN
+              valueFrom:
+                secretKeyRef: { name: {{ $pkiSecret }}, key: svc-token }
+            - name: AIRUSH_GATEWAY_TLS_CERT_PEM
+              valueFrom:
+                secretKeyRef: { name: {{ $pkiSecret }}, key: gateway.crt }
+            - name: AIRUSH_GATEWAY_TLS_KEY_PEM
+              valueFrom:
+                secretKeyRef: { name: {{ $pkiSecret }}, key: gateway.key }
+            - name: AIRUSH_GATEWAY_CLIENT_CA_PEM
+              valueFrom:
+                secretKeyRef: { name: {{ $pkiSecret }}, key: ca.crt }
+            {{- end }}
           livenessProbe:
             httpGet: { path: /healthz, port: 8081 }
             initialDelaySeconds: 2
@@ -56,8 +77,17 @@ spec:
   selector:
     {{- include "airush.selector" "gateway" | nindent 4 }}
   ports:
-    - port: 8081
+    - name: http
+      port: 8081
       targetPort: 8081
+    {{- if .Values.gateway.accept.enabled }}
+    - name: enroll
+      port: 8082
+      targetPort: 8082
+    - name: session
+      port: 8083
+      targetPort: 8083
+    {{- end }}
 {{- if gt (int .Values.gateway.replicas) 1 }}
 ---
 apiVersion: policy/v1

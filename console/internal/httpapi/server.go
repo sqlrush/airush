@@ -60,6 +60,8 @@ func (s *Server) Handler() http.Handler {
 
 	handle("GET /api/v1/connectors", s.listConnectors)
 	handle("GET /api/v1/connectors/{id}", s.getConnector)
+	handle("POST /api/v1/connectors", s.createConnector)
+	handle("POST /api/v1/connectors/{id}/revoke", s.revokeConnector)
 
 	return s.tenantMiddleware(mux)
 }

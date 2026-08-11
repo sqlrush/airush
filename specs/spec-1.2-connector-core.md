@@ -219,3 +219,9 @@ A 配合 Drain 帧让旧端体面退出，T8 固化语义。
 - spec-1.17：直连接入器复用指令分发器与探针（通道换直连）；
 - Stage 2 审批执行链：Command.approval_token 从预留转实装（AD-9）；
 - spec-1.13：控制台接入向导消费 create+token 流程与状态机展示。
+
+## 实施修订记录
+
+| 日期 | 修订 | 依据 |
+|---|---|---|
+| 2026-08-11 | 实施完成。实施期发现与决策（rule 5 范围内，记录于此）：① connector 注册面/会话面在网关是**两个端口**（server-TLS vs mTLS，TLS 配置不可共端口），connector 配置遂拆 `ENROLL_ADDR`/`SESSION_ADDR`；② 集成测试捕获 connector 会话循环并发 `stream.Send` 隐患（gRPC 客户端流非并发安全），改单发送方模型；③ Helm `genCA` 产 RSA/PKCS1 键，`pki.Load` 扩展为兼容 RSA/PKCS8/EC；④ **已知欠账（P2）**：迁移 Helm hook 为 post-install/upgrade，若同批部署的组件（如 console）未就绪导致 `helm upgrade` 失败，post 阶段迁移 hook 不执行——schema 变更被部署健康度间接门控。dev 环境靠健康后重跑 upgrade 落库；Stage 2 评估迁移与部署解耦（独立迁移流水或 pre-hook 化）。登记 roadmap backlog。 | spec-1.2 实施 |

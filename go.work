@@ -5,6 +5,7 @@ use (
 	./connector
 	./gateway
 	./agent-runtime
+	./proto/gen/go
 	./testkit
 	./libs/config
 	./libs/apierror

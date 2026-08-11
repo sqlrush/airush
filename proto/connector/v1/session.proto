@@ -1,0 +1,93 @@
+// Connector 会话通道（spec-1.2 §2.2 帧表定版）：mTLS bidi stream。
+// 兼容性契约：帧字段只增不改号；DataUpload 槽位（字段号 4）预留给 spec-1.3/1.5。
+syntax = "proto3";
+
+package connector.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/sqlrush/airush/proto/gen/go/connector/v1;connectorv1";
+
+// SessionService 由 gateway 暴露（mTLS 端口，证书↔connector 绑定校验）。
+service SessionService {
+  rpc Session(stream ClientFrame) returns (stream ServerFrame);
+}
+
+message ClientFrame {
+  // 4 预留给 DataUpload（spec-1.3/1.5 实装）。
+  reserved 4;
+  reserved "data_upload";
+
+  oneof frame {
+    Hello hello = 1;
+    Heartbeat heartbeat = 2;
+    CommandResult command_result = 3;
+  }
+}
+
+message ServerFrame {
+  oneof frame {
+    HelloAck hello_ack = 1;
+    HeartbeatAck heartbeat_ack = 2;
+    Command command = 3;
+    Drain drain = 4;
+  }
+}
+
+// Hello 会话首帧；connector_id 必须与客户端证书 CN 一致，否则会话拒绝。
+message Hello {
+  string connector_id = 1;
+  string version = 2;
+  google.protobuf.Timestamp started_at = 3;
+}
+
+// HelloAck 会话参数下发。
+message HelloAck {
+  uint32 heartbeat_interval_seconds = 1;
+  // 服务端时钟（客户侧偏移告警用，spec-1.2 §6 时钟风险缓解）。
+  google.protobuf.Timestamp server_time = 2;
+}
+
+message Heartbeat {
+  uint64 seq = 1;
+  // 采集器健康摘要（spec-1.3 起填充；键名约定随其 spec 定版）。
+  map<string, string> health = 2;
+}
+
+message HeartbeatAck {
+  uint64 seq = 1;
+}
+
+// Command 指令下发。Stage 1 type 仅 PING/ECHO；approval_token 为 AD-9 预留位，
+// Stage 2 审批执行链实装前恒为空。
+message Command {
+  string command_id = 1;
+  string type = 2;
+  bytes payload = 3;
+  string approval_token = 4;
+}
+
+message CommandResult {
+  string command_id = 1;
+
+  enum Status {
+    STATUS_UNSPECIFIED = 0;
+    STATUS_OK = 1;
+    STATUS_ERROR = 2;
+    STATUS_UNSUPPORTED = 3;
+  }
+  Status status = 2;
+  bytes payload = 3;
+  CommandError error = 4;
+}
+
+// CommandError 携带注册错误码（proto/errors.json 码空间）。
+message CommandError {
+  string code = 1;
+  string message = 2;
+}
+
+// Drain 网关要求客户端体面退出（优雅下线 / 新连踢旧连 / 吊销）。
+message Drain {
+  string reason = 1;
+}

@@ -268,7 +268,7 @@ func TestAPIIntegration(t *testing.T) {
 		wantCode(t, status, body, 404, "AR_DATASOURCE_NOT_FOUND")
 	})
 
-	t.Run("connectors 只读展示面", func(t *testing.T) {
+	t.Run("connectors 读展示面", func(t *testing.T) {
 		status, body := env.do(t, env.dev, "GET", "/api/v1/connectors", nil, nil)
 		if status != 200 || len(jsonMap(t, body)["items"].([]any)) != 1 {
 			t.Fatalf("list connectors: %d %.200s, want 1 item", status, body)
@@ -280,6 +280,37 @@ func TestAPIIntegration(t *testing.T) {
 		status, body = env.do(t, env.dev, "GET",
 			"/api/v1/connectors/99999999-9999-9999-9999-999999999999", nil, nil)
 		wantCode(t, status, body, 404, "AR_COMMON_NOT_FOUND")
+	})
+
+	t.Run("connector 创建与吊销（spec-1.2 写路径）", func(t *testing.T) {
+		status, body := env.do(t, env.dev, "POST", "/api/v1/connectors",
+			map[string]any{"name": "created-conn", "location": "内网 A"}, nil)
+		if status != 201 {
+			t.Fatalf("create connector: %d %.200s", status, body)
+		}
+		m := jsonMap(t, body)
+		newID, _ := m["id"].(string)
+		token, _ := m["enrollment_token"].(string)
+		if newID == "" || token == "" || m["status"] != "pending" {
+			t.Fatalf("create resp missing id/token/pending: %.200s", body)
+		}
+		// 令牌明文不出现在后续 GET（仅创建响应一次）
+		status, body = env.do(t, env.dev, "GET", "/api/v1/connectors/"+newID, nil, nil)
+		if status != 200 || strings.Contains(string(body), token) {
+			t.Fatalf("token leaked in GET or bad status: %d", status)
+		}
+
+		// 吊销 → 204；幂等再吊销仍 204
+		if s, b := env.do(t, env.dev, "POST", "/api/v1/connectors/"+newID+"/revoke", nil, nil); s != 204 {
+			t.Fatalf("revoke: %d %.200s", s, b)
+		}
+		if s, _ := env.do(t, env.dev, "POST", "/api/v1/connectors/"+newID+"/revoke", nil, nil); s != 204 {
+			t.Fatalf("idempotent revoke: %d", s)
+		}
+		// 吊销不存在的 → 404
+		s, b := env.do(t, env.dev, "POST",
+			"/api/v1/connectors/99999999-9999-9999-9999-999999999999/revoke", nil, nil)
+		wantCode(t, s, b, 404, "AR_COMMON_NOT_FOUND")
 	})
 
 	t.Run("T7 查无与非法游标", func(t *testing.T) {
