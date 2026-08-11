@@ -5,7 +5,7 @@
 SHELL := /bin/bash
 GO_MODULES := console connector gateway agent-runtime
 # GO_ALL 含非组件模块（testkit 等）：参与 lint/test/cover，不产二进制
-GO_ALL := $(GO_MODULES) testkit libs/config libs/apierror libs/obs libs/accessor proto/gen/go
+GO_ALL := $(GO_MODULES) testkit libs/config libs/apierror libs/obs libs/accessor libs/metrics proto/gen/go
 
 # 本仓库使用 go.work 工作区；强制 -mod=readonly，避免用户全局 -mod=mod 与
 # workspace 模式冲突（workspace 下 -mod 仅允许 readonly/vendor）。

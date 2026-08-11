@@ -11,4 +11,5 @@ use (
 	./libs/apierror
 	./libs/obs
 	./libs/accessor
+	./libs/metrics
 )
