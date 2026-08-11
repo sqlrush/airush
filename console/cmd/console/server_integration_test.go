@@ -4,6 +4,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -32,12 +34,16 @@ func TestRunServerLifecycle(t *testing.T) {
 		t.Fatalf("migrate up: %v", err)
 	}
 
+	kek := make([]byte, 32)
+	if _, err := rand.Read(kek); err != nil {
+		t.Fatalf("rand: %v", err)
+	}
 	cfg := appConfig{
 		LogLevel:        "info",
 		Listen:          fmt.Sprintf("127.0.0.1:%d", freePort(t)),
 		SampleRatio:     1.0,
 		DBURL:           pg.ConnString,
-		CredentialKEK:   "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+		CredentialKEK:   base64.StdEncoding.EncodeToString(kek),
 		CredentialKEKID: "v1",
 		DefaultTenantID: "00000000-0000-0000-0000-000000000001",
 	}
