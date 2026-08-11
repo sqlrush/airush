@@ -3,9 +3,15 @@
 useDefault = true
 
 [allowlist]
-description = "已审计的公开假密钥（非真实凭据），精确值放行，不放行任何文件路径"
+description = "已审计的公开假密钥（非真实凭据）"
 regexes = [
   # kind 本地开发环境固定 KEK（32 字节 "0123456789abcdef..." 的 base64，spec-1.1 values-dev.yaml；
   # 同串曾出现在 console serve 集成测试的历史 commit，现测试已改为运行时随机生成）
   '''MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=''',
+  # enrolltoken 解析器的畸形输入测试固定值（spec-1.2；全部是故意非法的假 token，用于断言拒绝）
+  '''bm90LWNvbG9u\.s''',
+]
+paths = [
+  # enrolltoken 解析器单测：整文件是对畸形/伪造 token 的拒绝断言，无真实凭据
+  '''console/internal/enrolltoken/enrolltoken_test\.go''',
 ]
