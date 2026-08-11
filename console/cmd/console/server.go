@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/sqlrush/airush/console/internal/credcrypto"
+	"github.com/sqlrush/airush/console/internal/directconn"
 	"github.com/sqlrush/airush/console/internal/httpapi"
 	"github.com/sqlrush/airush/console/internal/pki"
 	"github.com/sqlrush/airush/console/internal/repo"
@@ -59,7 +60,8 @@ func buildHandler(cfg appConfig, store *repo.Store, version string) (http.Handle
 	if err != nil {
 		return nil, fmt.Errorf("init credential sealer: %w", err)
 	}
-	api, err := httpapi.New(store, sealer, cfg.DefaultTenantID)
+	direct := directconn.New(store, sealer, directconn.DefaultConfig())
+	api, err := httpapi.New(store, sealer, direct, cfg.DefaultTenantID)
 	if err != nil {
 		return nil, fmt.Errorf("init httpapi: %w", err)
 	}

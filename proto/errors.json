@@ -28,6 +28,8 @@
     { "code": "AR_CONNECTOR_ALREADY_ENROLLED", "level": "E3", "http": 409, "message": "该接入器已完成注册", "description": "spec-1.2：非 pending 状态重复 enroll" },
     { "code": "AR_CONNECTOR_REVOKED", "level": "E2", "http": 403, "message": "该接入器已被吊销", "description": "spec-1.2：吊销后的握手/注册请求" },
     { "code": "AR_CONNECTOR_OFFLINE", "level": "E5", "http": 503, "message": "数据源接入器离线", "description": "spec-1.2 预埋：指令下发时无活跃会话（正式消费在执行链）" },
-    { "code": "AR_SVC_UNAUTHENTICATED", "level": "E2", "http": 401, "message": "服务间认证失败", "description": "spec-1.2：内部服务 API service token 缺失或无效" }
+    { "code": "AR_SVC_UNAUTHENTICATED", "level": "E2", "http": 401, "message": "服务间认证失败", "description": "spec-1.2：内部服务 API service token 缺失或无效" },
+    { "code": "AR_DATASOURCE_CONNECT_FAILED", "level": "E5", "http": 502, "message": "数据源连接失败", "description": "spec-1.17：直连建连失败（网络/认证/协议）；details 携带类别，绝不含凭据" },
+    { "code": "AR_DATASOURCE_TEST_TIMEOUT", "level": "E5", "http": 504, "message": "数据源连接测试超时", "description": "spec-1.17：直连测试在超时窗口内未完成" }
   ]
 }

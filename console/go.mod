@@ -102,3 +102,7 @@ replace github.com/sqlrush/airush/libs/config => ../libs/config
 replace github.com/sqlrush/airush/libs/apierror => ../libs/apierror
 
 replace github.com/sqlrush/airush/libs/obs => ../libs/obs
+
+require github.com/sqlrush/airush/libs/accessor v0.0.0-00010101000000-000000000000
+
+replace github.com/sqlrush/airush/libs/accessor => ../libs/accessor

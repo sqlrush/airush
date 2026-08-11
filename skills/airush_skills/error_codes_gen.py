@@ -28,4 +28,6 @@ ERROR_CODES: dict[str, dict[str, object]] = {
     "AR_CONNECTOR_REVOKED": {"level": "E2", "http": 403, "message": "该接入器已被吊销", "deprecated": False},
     "AR_CONNECTOR_OFFLINE": {"level": "E5", "http": 503, "message": "数据源接入器离线", "deprecated": False},
     "AR_SVC_UNAUTHENTICATED": {"level": "E2", "http": 401, "message": "服务间认证失败", "deprecated": False},
+    "AR_DATASOURCE_CONNECT_FAILED": {"level": "E5", "http": 502, "message": "数据源连接失败", "deprecated": False},
+    "AR_DATASOURCE_TEST_TIMEOUT": {"level": "E5", "http": 504, "message": "数据源连接测试超时", "deprecated": False},
 }
