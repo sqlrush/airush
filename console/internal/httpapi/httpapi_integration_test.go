@@ -268,6 +268,20 @@ func TestAPIIntegration(t *testing.T) {
 		wantCode(t, status, body, 404, "AR_DATASOURCE_NOT_FOUND")
 	})
 
+	t.Run("connectors 只读展示面", func(t *testing.T) {
+		status, body := env.do(t, env.dev, "GET", "/api/v1/connectors", nil, nil)
+		if status != 200 || len(jsonMap(t, body)["items"].([]any)) != 1 {
+			t.Fatalf("list connectors: %d %.200s, want 1 item", status, body)
+		}
+		status, body = env.do(t, env.dev, "GET", "/api/v1/connectors/"+connectorID, nil, nil)
+		if status != 200 || jsonMap(t, body)["name"] != "conn-dev" {
+			t.Fatalf("get connector: %d %.200s", status, body)
+		}
+		status, body = env.do(t, env.dev, "GET",
+			"/api/v1/connectors/99999999-9999-9999-9999-999999999999", nil, nil)
+		wantCode(t, status, body, 404, "AR_COMMON_NOT_FOUND")
+	})
+
 	t.Run("T7 查无与非法游标", func(t *testing.T) {
 		status, body := env.do(t, env.dev, "GET",
 			"/api/v1/datasources/99999999-9999-9999-9999-999999999999", nil, nil)
