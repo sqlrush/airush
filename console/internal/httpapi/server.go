@@ -4,10 +4,12 @@
 package httpapi
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
 	"github.com/sqlrush/airush/console/internal/credcrypto"
+	"github.com/sqlrush/airush/console/internal/directconn"
 	"github.com/sqlrush/airush/console/internal/repo"
 	"github.com/sqlrush/airush/console/internal/tenancy"
 	"github.com/sqlrush/airush/libs/apierror"
@@ -17,15 +19,23 @@ import (
 type Server struct {
 	store           *repo.Store
 	sealer          *credcrypto.Sealer
+	directConn      DirectTester
 	defaultTenantID string
 }
 
+// DirectTester 是直连测试面（spec-1.17 directconn.Manager 满足）；接口化便于测试替身
+// 且避免 httpapi 直接耦合连接池实现。
+type DirectTester interface {
+	TestConnection(ctx context.Context, datasourceID string) (directconn.TestResult, error)
+}
+
 // New 构造 Server；defaultTenantID 必须是合法 UUID（Stage 1 租户来源，spec-2.2 换认证态）。
-func New(store *repo.Store, sealer *credcrypto.Sealer, defaultTenantID string) (*Server, error) {
+// directConn 为 nil 时 test-connection 返回 AR_COMMON_NOT_IMPLEMENTED。
+func New(store *repo.Store, sealer *credcrypto.Sealer, directConn DirectTester, defaultTenantID string) (*Server, error) {
 	if !isUUID(defaultTenantID) {
 		return nil, fmt.Errorf("httpapi: default tenant id %q is not a UUID", defaultTenantID)
 	}
-	return &Server{store: store, sealer: sealer, defaultTenantID: defaultTenantID}, nil
+	return &Server{store: store, sealer: sealer, directConn: directConn, defaultTenantID: defaultTenantID}, nil
 }
 
 // Handler 返回带租户注入的 API 根 handler（观测中间件由 cmd 侧统一包裹）。
@@ -41,6 +51,7 @@ func (s *Server) Handler() http.Handler {
 	handle("PATCH /api/v1/datasources/{id}", s.patchDatasource)
 	handle("DELETE /api/v1/datasources/{id}", s.deleteDatasource)
 	handle("PUT /api/v1/datasources/{id}/credential", s.putCredential)
+	handle("POST /api/v1/datasources/{id}/test-connection", s.testConnection)
 
 	handle("GET /api/v1/datasources/{id}/aliases", s.listAliases)
 	handle("POST /api/v1/datasources/{id}/aliases", s.createAlias)

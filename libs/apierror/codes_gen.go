@@ -31,6 +31,8 @@ const (
 	CodeConnectorRevoked Code = "AR_CONNECTOR_REVOKED"
 	CodeConnectorOffline Code = "AR_CONNECTOR_OFFLINE"
 	CodeSvcUnauthenticated Code = "AR_SVC_UNAUTHENTICATED"
+	CodeDatasourceConnectFailed Code = "AR_DATASOURCE_CONNECT_FAILED"
+	CodeDatasourceTestTimeout Code = "AR_DATASOURCE_TEST_TIMEOUT"
 )
 
 var codeMeta = map[Code]Meta{
@@ -61,4 +63,6 @@ var codeMeta = map[Code]Meta{
 	CodeConnectorRevoked: {Level: "E2", HTTP: 403, Message: "该接入器已被吊销", Deprecated: false},
 	CodeConnectorOffline: {Level: "E5", HTTP: 503, Message: "数据源接入器离线", Deprecated: false},
 	CodeSvcUnauthenticated: {Level: "E2", HTTP: 401, Message: "服务间认证失败", Deprecated: false},
+	CodeDatasourceConnectFailed: {Level: "E5", HTTP: 502, Message: "数据源连接失败", Deprecated: false},
+	CodeDatasourceTestTimeout: {Level: "E5", HTTP: 504, Message: "数据源连接测试超时", Deprecated: false},
 }

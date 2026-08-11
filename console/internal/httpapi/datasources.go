@@ -271,6 +271,22 @@ func (s *Server) putCredential(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
+// testConnection 直连连通性测试（spec-1.17 D3）：仅 direct 模式；只读、不落库。
+func (s *Server) testConnection(w http.ResponseWriter, r *http.Request) error {
+	if s.directConn == nil {
+		return apierror.New(apierror.CodeCommonNotImplemented)
+	}
+	id, err := pathUUID(r, "id")
+	if err != nil {
+		return err
+	}
+	result, err := s.directConn.TestConnection(r.Context(), id)
+	if err != nil {
+		return err
+	}
+	return writeJSON(w, http.StatusOK, result)
+}
+
 // nilIfEmpty 空串 → nil（可选外键入参）。
 func nilIfEmpty(s string) *string {
 	if s == "" {

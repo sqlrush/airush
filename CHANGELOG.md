@@ -8,6 +8,15 @@
 
 ### Added
 
+- 直连接入模式（spec-1.17，AD-2②）：
+  - libs/accessor 通道无关 Accessor 抽象（Connector/Direct 双实现共享 BuiltinDispatch，只读护栏）；
+  - console/internal/directconn：从 credcrypto 解密凭据 → 每 datasource pgx 连接池
+    （懒建/空闲 TTL 回收/删除销毁），密码经 pgx config 字段注入不进 DSN 字符串（AD-4 第三道防线）；
+  - test-connection API（仅 direct 模式、只读、不落库）+ 错误码 AR_DATASOURCE_CONNECT_FAILED/TEST_TIMEOUT；
+  - DirectAccessor 实现 accessor.Accessor（编译期断言，与 Connector 通道语义一致）。
+
+### Added
+
 - Connector 核心：注册 / mTLS 长连接 / 心跳 / 指令通道（spec-1.2）：
   - proto 契约与 buf 生成链（connector/v1 enrollment+session，幂等守护 + breaking 检测入 CI）；
   - 迁移 0003：connectors 六态状态机 + 一次性注册令牌哈希列 + 吊销时间戳；

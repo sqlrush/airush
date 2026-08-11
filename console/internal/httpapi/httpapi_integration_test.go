@@ -20,6 +20,7 @@ import (
 
 	"github.com/sqlrush/airush/console/internal/credcrypto"
 	"github.com/sqlrush/airush/console/internal/dbmigrate"
+	"github.com/sqlrush/airush/console/internal/directconn"
 	"github.com/sqlrush/airush/console/internal/repo"
 	"github.com/sqlrush/airush/testkit"
 )
@@ -85,7 +86,7 @@ func newAPIEnv(t *testing.T) *apiEnv {
 		tenant string
 		dst    **httptest.Server
 	}{{devTenantID, &env.dev}, {tenantBID, &env.b}} {
-		api, err := New(store, sealer, cfg.tenant)
+		api, err := New(store, sealer, directconn.New(store, sealer, directconn.DefaultConfig()), cfg.tenant)
 		if err != nil {
 			t.Fatalf("new server: %v", err)
 		}
@@ -251,6 +252,25 @@ func TestAPIIntegration(t *testing.T) {
 		}
 		status, body = env.do(t, env.dev, "PUT", "/api/v1/datasources/"+connDSID+"/credential",
 			map[string]string{"username": "x", "password": "y"}, nil)
+		wantCode(t, status, body, 400, "AR_DATASOURCE_MODE_MISMATCH")
+	})
+
+	t.Run("test-connection API（spec-1.17 模式护栏 + 泄漏防线）", func(t *testing.T) {
+		// direct 模式数据源（host 不可达）→ 连接失败，响应不含凭据明文
+		status, body := env.do(t, env.dev, "POST",
+			"/api/v1/datasources/"+directDSID+"/test-connection", nil, nil)
+		if status == 200 {
+			t.Fatalf("unreachable direct DS test-connection unexpectedly OK: %.200s", body)
+		}
+		if code := jsonMap(t, body)["code"]; code != "AR_DATASOURCE_CONNECT_FAILED" &&
+			code != "AR_DATASOURCE_TEST_TIMEOUT" {
+			t.Fatalf("test-connection code = %v, want CONNECT_FAILED/TIMEOUT", code)
+		}
+		// connector 模式 → 模式护栏
+		var connID2 string
+		_ = env.admin.QueryRow(`SELECT id FROM datasources WHERE name='og-conn'`).Scan(&connID2)
+		status, body = env.do(t, env.dev, "POST",
+			"/api/v1/datasources/"+connID2+"/test-connection", nil, nil)
 		wantCode(t, status, body, 400, "AR_DATASOURCE_MODE_MISMATCH")
 	})
 
