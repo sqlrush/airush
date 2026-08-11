@@ -19,6 +19,13 @@ const (
 	CodeUpstreamLlmFailed Code = "AR_UPSTREAM_LLM_FAILED"
 	CodeUpstreamConnectorOffline Code = "AR_UPSTREAM_CONNECTOR_OFFLINE"
 	CodeQuotaExceeded Code = "AR_QUOTA_EXCEEDED"
+	CodeDatasourceNotFound Code = "AR_DATASOURCE_NOT_FOUND"
+	CodeDatasourceNameConflict Code = "AR_DATASOURCE_NAME_CONFLICT"
+	CodeDatasourceModeMismatch Code = "AR_DATASOURCE_MODE_MISMATCH"
+	CodeDatasourceInUse Code = "AR_DATASOURCE_IN_USE"
+	CodeAgentNotFound Code = "AR_AGENT_NOT_FOUND"
+	CodeAliasConflict Code = "AR_ALIAS_CONFLICT"
+	CodeIdempotencyReplay Code = "AR_IDEMPOTENCY_REPLAY"
 )
 
 var codeMeta = map[Code]Meta{
@@ -37,4 +44,11 @@ var codeMeta = map[Code]Meta{
 	CodeUpstreamLlmFailed: {Level: "E5", HTTP: 502, Message: "模型服务暂不可用，请稍后重试", Deprecated: false},
 	CodeUpstreamConnectorOffline: {Level: "E5", HTTP: 503, Message: "数据源接入器离线，请检查 Connector 状态", Deprecated: false},
 	CodeQuotaExceeded: {Level: "E6", HTTP: 429, Message: "请求超出配额限制，请稍后重试", Deprecated: false},
+	CodeDatasourceNotFound: {Level: "E3", HTTP: 404, Message: "数据源不存在", Deprecated: false},
+	CodeDatasourceNameConflict: {Level: "E3", HTTP: 409, Message: "数据源名称已存在", Deprecated: false},
+	CodeDatasourceModeMismatch: {Level: "E1", HTTP: 400, Message: "接入模式与连接配置不匹配", Deprecated: false},
+	CodeDatasourceInUse: {Level: "E3", HTTP: 409, Message: "数据源正被引用，无法删除", Deprecated: false},
+	CodeAgentNotFound: {Level: "E3", HTTP: 404, Message: "智能体不存在", Deprecated: false},
+	CodeAliasConflict: {Level: "E3", HTTP: 409, Message: "别名已被占用", Deprecated: false},
+	CodeIdempotencyReplay: {Level: "E1", HTTP: 409, Message: "幂等键已用于不同的请求", Deprecated: false},
 }

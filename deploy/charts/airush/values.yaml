@@ -9,15 +9,23 @@ common:
   traceSampleRatio: "1.0"
   logLevel: info
 
-# console：API 服务随 spec-1.1 实装后 enabled；当前仅 migrate hook 消费其镜像
+# console：控制面 API（spec-1.1）。生产默认关，显式开启并配置 KEK 后可用
 console:
   enabled: false
   replicas: 1
+  listen: ":8080"
   resources:
     requests: { cpu: 250m, memory: 256Mi }
     limits: { cpu: "1", memory: 1Gi }
   # 控制面 PG 连接串；空且 storage.builtin=true 时自动指向内置 PG
   dbUrl: ""
+  # 凭据信封加密 KEK（AD-4②；值 = 32 字节密钥的 base64 串，即 app env 的原样值）。
+  # 生产：credentialKekSecret 引用既有 k8s Secret（key: credential-kek，值同为 base64 串）；
+  # credentialKek 仅开发/演示（入 values 即入 git，禁生产）
+  credentialKek: ""
+  credentialKekSecret: ""
+  credentialKekId: v1
+  defaultTenantId: "00000000-0000-0000-0000-000000000001"
   migrate:
     enabled: true
 

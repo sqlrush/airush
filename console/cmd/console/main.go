@@ -16,10 +16,15 @@ const component = "console"
 
 // appConfig 是 console 的全部配置面（.env.example 与此同步，CI 校验）。
 type appConfig struct {
-	LogLevel string `env:"LOG_LEVEL"   default:"info" oneof:"debug,info,warn,error" common:"true"`
-	Listen   string `env:"LISTEN_ADDR" default:":8080"`
-	// DBURL 非启动必填（版本/横幅路径无 DB）；migrate 子命令显式校验。
-	DBURL string `env:"DB_URL" secret:"true"`
+	LogLevel     string  `env:"LOG_LEVEL"          default:"info" oneof:"debug,info,warn,error" common:"true"`
+	Listen       string  `env:"LISTEN_ADDR"        default:":8080"`
+	OTLPEndpoint string  `env:"OTLP_ENDPOINT"      default:"" common:"true"`
+	SampleRatio  float64 `env:"TRACE_SAMPLE_RATIO" default:"1.0" common:"true"`
+	// DBURL / CredentialKEK 非启动必填（版本/横幅路径不需要）；migrate 与 --serve 分别显式校验。
+	DBURL           string `env:"DB_URL"             secret:"true"`
+	CredentialKEK   string `env:"CREDENTIAL_KEK"     secret:"true"`
+	CredentialKEKID string `env:"CREDENTIAL_KEK_ID"  default:"v1"`
+	DefaultTenantID string `env:"DEFAULT_TENANT_ID"  default:"00000000-0000-0000-0000-000000000001"`
 }
 
 // version 由构建期 -ldflags 注入（spec-0.10/0.11 定版链路）。
@@ -33,6 +38,7 @@ func banner(v string) string {
 func main() {
 	printCfg := flag.Bool("print-config", false, "打印脱敏配置后退出")
 	cfgKeys := flag.Bool("config-keys", false, "打印全部配置项变量名后退出")
+	serve := flag.Bool("serve", false, "启动控制面 API 服务（spec-1.1）")
 	flag.Bool("version", false, "print version and exit")
 	flag.Parse()
 
@@ -48,6 +54,11 @@ func main() {
 	}
 	if *printCfg {
 		fmt.Println(config.Redacted(component, cfg))
+		return
+	}
+
+	if *serve {
+		serveMain(cfg)
 		return
 	}
 

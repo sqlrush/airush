@@ -1,0 +1,8 @@
+# OpenAPI 契约 lint 规则（spec-1.1 §6 缓解：契约先行的形态守护）
+extends: ["spectral:oas"]
+rules:
+  # 内部 API 无对外发布语义，服务器/联系人元数据不强制
+  info-contact: off
+  oas3-api-servers: off
+  # summary 已承载操作语义，description 不重复强制
+  operation-description: off

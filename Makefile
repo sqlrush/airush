@@ -91,7 +91,7 @@ $(GOLANGCI):
 	@mv $(TOOLS_BIN)/golangci-lint $(GOLANGCI)
 
 ## lint: 三语言全量（spec-0.2 实装）+ 迁移编号检查（spec-0.6）
-lint: lint-go lint-py lint-fe migrate-check
+lint: lint-go lint-py lint-fe lint-openapi migrate-check
 
 lint-go: $(GOLANGCI)
 	@for m in $(GO_ALL); do \
@@ -109,6 +109,13 @@ lint-fe:
 	@echo "==> lint frontend (eslint + prettier)"
 	@cd frontend && pnpm run lint && pnpm run format:check
 
+# spectral 钉版经 pnpm dlx（devDependency 同类：构建期工具，规则 8 豁免备案，CI 扫描覆盖）
+SPECTRAL_VERSION := 6.15.0
+lint-openapi:
+	@echo "==> lint openapi (spectral)"
+	@cd frontend && pnpm dlx @stoplight/spectral-cli@$(SPECTRAL_VERSION) \
+		lint --fail-severity=warn --ruleset ../proto/openapi/.spectral.yaml ../proto/openapi/console.yaml
+
 ## fmt: 分域格式化（Go=gofumpt+gci 经 golangci fmt；Py=ruff；FE=prettier），幂等
 fmt: $(GOLANGCI)
 	@for m in $(GO_ALL); do (cd $$m && $(TOOL_ENV) $(GOLANGCI) fmt ./...); done
@@ -125,9 +132,11 @@ docker-check:
 		exit 2; }
 
 integration-test-go: docker-check
+	@mkdir -p bin/cover/integration
 	@for m in $(GO_ALL); do \
 		echo "==> integration $$m"; \
-		(cd $$m && $(TOOL_ENV) $(GO) test -race -tags integration ./...) || exit 1; \
+		(cd $$m && $(TOOL_ENV) $(GO) test -race -tags integration -covermode=atomic \
+			-coverpkg=./... -coverprofile=$(CURDIR)/bin/cover/integration/$${m//\//-}.out ./...) || exit 1; \
 	done
 
 integration-test-py: docker-check

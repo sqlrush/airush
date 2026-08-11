@@ -1,0 +1,11 @@
+# gitleaks 配置（spec-0.3 security/gitleaks 消费；默认规则集全量保留）
+[extend]
+useDefault = true
+
+[allowlist]
+description = "已审计的公开假密钥（非真实凭据），精确值放行，不放行任何文件路径"
+regexes = [
+  # kind 本地开发环境固定 KEK（32 字节 "0123456789abcdef..." 的 base64，spec-1.1 values-dev.yaml；
+  # 同串曾出现在 console serve 集成测试的历史 commit，现测试已改为运行时随机生成）
+  '''MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=''',
+]

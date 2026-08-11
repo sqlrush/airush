@@ -1,6 +1,6 @@
 {
   "$comment": "错误码注册表 SSOT（spec-0.8 D1）。生成: make generate → libs/apierror/codes_gen.go + skills/airush_skills/error_codes_gen.py。已合并 main 的码禁删禁改语义（CI 守护）；弃用置 deprecated=true。level: E1 用户可修复/E2 认证授权/E3 资源/E4 平台内部/E5 上游依赖/E6 配额限流（spec-0.8 §2.3）。message 为面向用户的中文模板，禁运行时拼接内部细节（动态内容走 details）。",
-  "domains": ["COMMON", "AUTH", "TENANT", "VALIDATION", "INTERNAL", "UPSTREAM", "QUOTA"],
+  "domains": ["COMMON", "AUTH", "TENANT", "VALIDATION", "INTERNAL", "UPSTREAM", "QUOTA", "DATASOURCE", "AGENT", "ALIAS", "IDEMPOTENCY"],
   "codes": [
     { "code": "AR_VALIDATION_FAILED", "level": "E1", "http": 400, "message": "请求参数不合法", "description": "schema 校验失败，details 携带逐字段原因" },
     { "code": "AR_COMMON_NOT_FOUND", "level": "E3", "http": 404, "message": "请求的资源不存在", "description": "通用资源缺失；有专属码的域（如 TENANT）优先用专属码" },
@@ -16,6 +16,13 @@
     { "code": "AR_UPSTREAM_LLM_TIMEOUT", "level": "E5", "http": 504, "message": "模型服务响应超时，请稍后重试", "description": "LLM 网关侧超时" },
     { "code": "AR_UPSTREAM_LLM_FAILED", "level": "E5", "http": 502, "message": "模型服务暂不可用，请稍后重试", "description": "LLM 上游 5xx/连接失败" },
     { "code": "AR_UPSTREAM_CONNECTOR_OFFLINE", "level": "E5", "http": 503, "message": "数据源接入器离线，请检查 Connector 状态", "description": "指令下发时 Connector 心跳缺失" },
-    { "code": "AR_QUOTA_EXCEEDED", "level": "E6", "http": 429, "message": "请求超出配额限制，请稍后重试", "description": "租户级配额/限流触发" }
+    { "code": "AR_QUOTA_EXCEEDED", "level": "E6", "http": 429, "message": "请求超出配额限制，请稍后重试", "description": "租户级配额/限流触发" },
+    { "code": "AR_DATASOURCE_NOT_FOUND", "level": "E3", "http": 404, "message": "数据源不存在", "description": "spec-1.1：datasources 按 id 查无（本租户视图内）" },
+    { "code": "AR_DATASOURCE_NAME_CONFLICT", "level": "E3", "http": 409, "message": "数据源名称已存在", "description": "spec-1.1：(tenant_id, name) 唯一约束冲突" },
+    { "code": "AR_DATASOURCE_MODE_MISMATCH", "level": "E1", "http": 400, "message": "接入模式与连接配置不匹配", "description": "spec-1.1：connect_mode 与 connector/credential 组合非法（API 校验层，DB CHECK 兜底）" },
+    { "code": "AR_DATASOURCE_IN_USE", "level": "E3", "http": 409, "message": "数据源正被引用，无法删除", "description": "spec-1.1：被 agent 绑定或组内成员时拒绝删除，details 列出引用方" },
+    { "code": "AR_AGENT_NOT_FOUND", "level": "E3", "http": 404, "message": "智能体不存在", "description": "spec-1.1：agents 按 id 查无（本租户视图内）" },
+    { "code": "AR_ALIAS_CONFLICT", "level": "E3", "http": 409, "message": "别名已被占用", "description": "spec-1.1：(tenant_id, alias) 唯一约束冲突" },
+    { "code": "AR_IDEMPOTENCY_REPLAY", "level": "E1", "http": 409, "message": "幂等键已用于不同的请求", "description": "spec-1.1：同 Idempotency-Key 携带不同 payload（request_hash 不匹配）" }
   ]
 }
