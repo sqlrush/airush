@@ -106,7 +106,9 @@ func (c *Collector) loop(ctx context.Context, datasourceID, engineFamily string)
 	interval := c.cfg.effectiveInterval()
 	backoff := c.cfg.Backoff
 	// 启动抖动：首个周期在 [0, interval) 内偏移——用 datasourceID 派生确定性偏移，
-	// 避免引入随机源且测试可复现。掩码为非负 int64 后取模，杜绝溢出。
+	// 避免引入随机源且测试可复现。0x7fff… 掩码保非负、% interval 保 < interval，
+	// 转 int64 恒安全（gosec 无法证明该界，故显式 nolint）。
+	//nolint:gosec // 掩码+取模保证结果在 [0, interval)，无溢出
 	jitter := time.Duration(int64(hashOffset(datasourceID)&0x7fffffffffffffff) % int64(interval))
 	timer := time.NewTimer(jitter)
 	defer timer.Stop()
