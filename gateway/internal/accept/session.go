@@ -126,7 +126,7 @@ func (s *SessionServer) loop(stream connectorv1.SessionService_SessionServer, se
 			_ = stream.Send(&connectorv1.ServerFrame{Frame: &connectorv1.ServerFrame_Drain{
 				Drain: &connectorv1.Drain{Reason: reason},
 			}})
-			return status.Error(codes.Aborted, "AR_CONNECTOR_DRAINED")
+			return status.Error(codes.Aborted, "session drained") // 正常重连信号，非 apierror 码
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-recvErr:

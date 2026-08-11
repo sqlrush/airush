@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/sqlrush/airush/console/internal/dbmigrate"
+	"github.com/sqlrush/airush/console/internal/pki"
 	"github.com/sqlrush/airush/libs/obs"
 	"github.com/sqlrush/airush/testkit"
 )
@@ -38,6 +39,10 @@ func TestRunServerLifecycle(t *testing.T) {
 	if _, err := rand.Read(kek); err != nil {
 		t.Fatalf("rand: %v", err)
 	}
+	caCertPEM, caKeyPEM, err := pki.Generate("airush-connector-ca")
+	if err != nil {
+		t.Fatalf("gen ca: %v", err)
+	}
 	cfg := appConfig{
 		LogLevel:        "info",
 		Listen:          fmt.Sprintf("127.0.0.1:%d", freePort(t)),
@@ -46,6 +51,9 @@ func TestRunServerLifecycle(t *testing.T) {
 		CredentialKEK:   base64.StdEncoding.EncodeToString(kek),
 		CredentialKEKID: "v1",
 		DefaultTenantID: "00000000-0000-0000-0000-000000000001",
+		SvcToken:        "test-svc-token",
+		CACert:          string(caCertPEM),
+		CAKey:           string(caKeyPEM),
 	}
 	provider := obs.Init(ctx, obs.Config{
 		Component: component, LogLevel: cfg.LogLevel, SampleRatio: cfg.SampleRatio,

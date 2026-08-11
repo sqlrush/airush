@@ -99,9 +99,12 @@ func (c *Client) runOnce(ctx context.Context) error {
 	return c.pump(ctx, stream, interval)
 }
 
-// pump 并发：定时发心跳 + 接收服务端帧（Command 分发、Drain 触发重连）。
+// pump 单发送方模型：唯一主循环负责全部 stream.Send（心跳 + 指令结果），
+// recv 在独立 goroutine 只读并把待发结果经 channel 交回主循环——gRPC 客户端流
+// SendMsg 非并发安全，不可从多 goroutine 调用。
 func (c *Client) pump(ctx context.Context, stream connectorv1.SessionService_SessionClient, interval time.Duration) error {
 	recvErr := make(chan error, 1)
+	results := make(chan *connectorv1.CommandResult, 4)
 	go func() {
 		for {
 			frame, err := stream.Recv()
@@ -110,10 +113,7 @@ func (c *Client) pump(ctx context.Context, stream connectorv1.SessionService_Ses
 				return
 			}
 			if cmd := frame.GetCommand(); cmd != nil {
-				res := c.handler.Handle(cmd)
-				_ = stream.Send(&connectorv1.ClientFrame{Frame: &connectorv1.ClientFrame_CommandResult{
-					CommandResult: res,
-				}})
+				results <- c.handler.Handle(cmd)
 			}
 			if d := frame.GetDrain(); d != nil {
 				recvErr <- fmt.Errorf("session: drained: %s", d.GetReason())
@@ -131,6 +131,12 @@ func (c *Client) pump(ctx context.Context, stream connectorv1.SessionService_Ses
 			return ctx.Err()
 		case err := <-recvErr:
 			return err
+		case res := <-results:
+			if err := stream.Send(&connectorv1.ClientFrame{Frame: &connectorv1.ClientFrame_CommandResult{
+				CommandResult: res,
+			}}); err != nil {
+				return fmt.Errorf("session: send command result: %w", err)
+			}
 		case <-ticker.C:
 			seq++
 			if err := stream.Send(&connectorv1.ClientFrame{Frame: &connectorv1.ClientFrame_Heartbeat{
