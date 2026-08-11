@@ -262,6 +262,13 @@ dev-up:
 	kind load docker-image $(REGISTRY)/gateway:latest $(REGISTRY)/console:latest $(REGISTRY)/connector:latest --name $(KIND_CLUSTER)
 	helm upgrade --install airush deploy/charts/airush \
 		-f deploy/charts/airush/values-dev.yaml --wait --timeout 5m
+	@# :latest + pullPolicy:Never 下，镜像内容变但 Deployment spec 不变 → helm 不滚动 pod。
+	@# 显式 rollout restart 让已 kind-load 的新镜像生效（dev 环境每次 dev-up 都重建镜像）。
+	@for d in console gateway; do \
+		kubectl --context kind-$(KIND_CLUSTER) get deploy airush-$$d >/dev/null 2>&1 && \
+		kubectl --context kind-$(KIND_CLUSTER) rollout restart deploy/airush-$$d; \
+	done
+	@kubectl --context kind-$(KIND_CLUSTER) rollout status deploy/airush-console --timeout=120s
 	@kubectl --context kind-$(KIND_CLUSTER) get pods
 	@echo "dev-up OK：kubectl port-forward svc/airush-gateway 8081:8081 后访问 /healthz"
 
