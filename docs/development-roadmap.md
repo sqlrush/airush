@@ -204,5 +204,5 @@ SPEC（编码前讨论） → TDD 编码 → 集成测试 → Code Review → Re
 | spec-1.1 | **shipped**（T1-T10 全过；覆盖率合并口径 81.9%；dev-verify 端到端）| 2026-08-10 起草、approve、实施完成 |
 | spec-1.2 | **frozen · 实施完成**（T1-T12 全过；dev-verify connector e2e online；覆盖率合并口径达标）| 2026-08-11 起草、approve、实施 |
 | spec-1.17 | **frozen · 实施完成**（T1-T10 全过；directconn 真 PG 集成；覆盖率达标）| 2026-08-11 起草、approve、实施 |
-| spec-1.3 | DRAFT · **待 user approve**（采集组首件；通道无关探针 + Sink 接口，TimescaleDB 归 1.5） | 2026-08-11 起草 |
+| spec-1.3 | **frozen · 实施中**（user approve，Q1-Q5 全采★） | 2026-08-11 起草并 approve |
 | 其余 Stage 1 specs | 按序起草（严格事前 approve） | — |

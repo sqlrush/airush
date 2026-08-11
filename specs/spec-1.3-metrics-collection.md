@@ -1,6 +1,6 @@
 # spec-1.3 openGauss（PG 协议族）采集：指标
 
-> **DRAFT — 待 user approve**（Stage 1 严格事前批准：approve 前不编码）
+> **frozen** — user approve 2026-08-11（Q1-Q5 全采★；无新依赖，复用 pgx）
 
 ## Header / 元数据
 
