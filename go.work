@@ -10,4 +10,5 @@ use (
 	./libs/config
 	./libs/apierror
 	./libs/obs
+	./libs/accessor
 )
