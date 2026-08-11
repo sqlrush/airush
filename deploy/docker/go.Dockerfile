@@ -16,6 +16,7 @@ COPY testkit/go.mod testkit/go.sum* testkit/
 COPY libs/config/go.mod libs/config/go.sum* libs/config/
 COPY libs/apierror/go.mod libs/apierror/go.sum* libs/apierror/
 COPY libs/obs/go.mod libs/obs/go.sum* libs/obs/
+COPY proto/gen/go/go.mod proto/gen/go/go.sum* proto/gen/go/
 RUN go mod download all || true
 COPY . .
 ARG VERSION=0.0.0-dev

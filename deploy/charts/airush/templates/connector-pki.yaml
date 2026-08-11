@@ -1,0 +1,49 @@
+{{- if .Values.console.enabled }}
+{{- /*
+spec-1.2：Connector 接入 PKI 与服务间 token。
+- 内部 CA + gateway 会话端服务端证书由 Helm 生成（dev/builtin 形态）；
+  生产用 gateway.accept.externalCASecret / externalSvcTokenSecret 引用既有 Secret。
+- 用 lookup 复用已存在的 Secret，避免每次 upgrade 重生成证书导致 pod 重启
+  （dev-verify 幂等断言依赖此稳定性）。
+*/}}
+{{- if not .Values.gateway.accept.externalCASecret }}
+{{- $ns := .Release.Namespace }}
+{{- $secretName := printf "%s-connector-pki" .Release.Name }}
+{{- $existing := lookup "v1" "Secret" $ns $secretName }}
+{{- if $existing }}
+# 复用既有 PKI Secret（内容不变，避免 pod 重启）
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $secretName }}
+  labels:
+    {{- include "airush.labels" . | nindent 4 }}
+type: Opaque
+data:
+  ca.crt: {{ index $existing.data "ca.crt" }}
+  ca.key: {{ index $existing.data "ca.key" }}
+  gateway.crt: {{ index $existing.data "gateway.crt" }}
+  gateway.key: {{ index $existing.data "gateway.key" }}
+  svc-token: {{ index $existing.data "svc-token" }}
+{{- else }}
+{{- $ca := genCA "airush-connector-ca" 3650 }}
+{{- $gwName := printf "%s-gateway" .Release.Name }}
+{{- $altNames := list $gwName (printf "%s.%s.svc" $gwName $ns) "localhost" }}
+{{- $gwCert := genSignedCert $gwName (list "127.0.0.1") $altNames 3650 $ca }}
+{{- $svcToken := randAlphaNum 48 }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $secretName }}
+  labels:
+    {{- include "airush.labels" . | nindent 4 }}
+type: Opaque
+data:
+  ca.crt: {{ $ca.Cert | b64enc }}
+  ca.key: {{ $ca.Key | b64enc }}
+  gateway.crt: {{ $gwCert.Cert | b64enc }}
+  gateway.key: {{ $gwCert.Key | b64enc }}
+  svc-token: {{ $svcToken | b64enc }}
+{{- end }}
+{{- end }}
+{{- end }}

@@ -25,10 +25,12 @@ import (
 const component = "connector"
 
 // appConfig 是 connector 的全部配置面（.env.example 与此同步，CI 校验）。
+// 注册面（server-TLS）与会话面（mTLS）在网关不同端口，故两个地址。
 type appConfig struct {
-	LogLevel    string `env:"LOG_LEVEL"    default:"info" oneof:"debug,info,warn,error" common:"true"`
-	ConfigDir   string `env:"CONFIG_DIR"   default:""`
-	GatewayAddr string `env:"GATEWAY_ADDR" default:""`
+	LogLevel    string `env:"LOG_LEVEL"     default:"info" oneof:"debug,info,warn,error" common:"true"`
+	ConfigDir   string `env:"CONFIG_DIR"    default:""`
+	EnrollAddr  string `env:"ENROLL_ADDR"   default:""`
+	SessionAddr string `env:"SESSION_ADDR"  default:""`
 	// EnrollToken 仅 --enroll 时需要（secret）。
 	EnrollToken string `env:"ENROLL_TOKEN" secret:"true"`
 	// EnrollCAPEM：注册端 server-TLS 的信任根（PEM 内容或空=用系统根）。
@@ -71,7 +73,7 @@ func main() {
 }
 
 func mustEnroll(cfg appConfig) {
-	requireAddr(cfg.GatewayAddr)
+	requireAddr(cfg.EnrollAddr, "AIRUSH_CONNECTOR_ENROLL_ADDR")
 	if cfg.EnrollToken == "" {
 		fatal("AIRUSH_CONNECTOR_ENROLL_TOKEN 未设置（--enroll 必需）")
 	}
@@ -83,14 +85,14 @@ func mustEnroll(cfg appConfig) {
 	if err != nil {
 		fatal(err.Error())
 	}
-	if err := enroll.Run(context.Background(), store, cfg.GatewayAddr, cfg.EnrollToken, version, creds); err != nil {
+	if err := enroll.Run(context.Background(), store, cfg.EnrollAddr, cfg.EnrollToken, version, creds); err != nil {
 		fatal(err.Error())
 	}
 	fmt.Println("enroll ok")
 }
 
 func mustRun(cfg appConfig) {
-	requireAddr(cfg.GatewayAddr)
+	requireAddr(cfg.SessionAddr, "AIRUSH_CONNECTOR_SESSION_ADDR")
 	store, err := conf.NewStore(cfg.ConfigDir)
 	if err != nil {
 		fatal(err.Error())
@@ -112,7 +114,7 @@ func mustRun(cfg appConfig) {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	client := session.New(session.Config{
-		GatewayAddr: cfg.GatewayAddr, ConnectorID: connectorID, Version: version,
+		GatewayAddr: cfg.SessionAddr, ConnectorID: connectorID, Version: version,
 	}, creds, session.BuiltinHandler{}, provider.Logger)
 	if err := client.Run(ctx); err != nil && ctx.Err() == nil {
 		fatal(err.Error())
@@ -132,9 +134,9 @@ func enrollCreds(caPEM string) (credentials.TransportCredentials, error) {
 	return credentials.NewTLS(&tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS13}), nil
 }
 
-func requireAddr(addr string) {
+func requireAddr(addr, name string) {
 	if addr == "" {
-		fatal("AIRUSH_CONNECTOR_GATEWAY_ADDR 未设置")
+		fatal(name + " 未设置")
 	}
 }
 

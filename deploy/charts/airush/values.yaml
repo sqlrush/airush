@@ -36,6 +36,12 @@ gateway:
   resources:
     requests: { cpu: 500m, memory: 512Mi }
     limits: { cpu: "2", memory: 1Gi }
+  # spec-1.2 Connector 接入面（注册/会话 gRPC）。需要 console.enabled（含内部 CA 与 svcapi）。
+  accept:
+    enabled: false
+    # 生产：引用运维预置的 PKI Secret（键 ca.crt/ca.key/gateway.crt/gateway.key/svc-token）；
+    # 空 = Helm 生成（dev/builtin 形态，见 connector-pki.yaml）
+    externalCASecret: ""
 
 # 其余组件槽位（模板随对应 spec 添加，见 spec-0.10 实施修订）：
 # agent-runtime → spec-1.8；skills → spec-1.9；frontend → spec-1.13；

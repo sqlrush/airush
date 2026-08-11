@@ -51,6 +51,63 @@ leak=$("${KCTL[@]}" exec airush-pg-0 -- psql -U postgres -d airush -tAc \
 [ "$leak" = "0" ] || fail "凭据明文出现在密文列（AD-4② 违规）"
 echo "  console API OK（201/幂等 409、列表可见、密文无明文）"
 
+echo "== connector 接入 e2e（spec-1.2：enroll → session → online） =="
+"${KCTL[@]}" port-forward svc/airush-console 18080:8080 >/dev/null 2>&1 &
+PF=$!
+sleep 2
+tok=$(curl -sf -X POST http://localhost:18080/api/v1/connectors \
+  -H 'Content-Type: application/json' -d '{"name":"dev-verify-conn","location":"kind"}' \
+  | sed -n 's/.*"enrollment_token":"\([^"]*\)".*/\1/p')
+cid=$("${KCTL[@]}" exec airush-pg-0 -- psql -U postgres -d airush -tAc \
+  "SELECT id FROM connectors WHERE name='dev-verify-conn'" | tr -d '[:space:]')
+kill $PF 2>/dev/null
+[ -n "$tok" ] || fail "未取得 enrollment token"
+# 在集群内跑 connector：initContainer 注册（写证书到 emptyDir），主容器维持会话。
+# distroless 无 shell，故用 initContainer + 共享卷（entrypoint=/app）。
+"${KCTL[@]}" delete pod airush-devverify-connector --ignore-not-found >/dev/null 2>&1
+env_common='
+            - { name: AIRUSH_CONNECTOR_CONFIG_DIR, value: /tmp/conn }
+            - { name: AIRUSH_CONNECTOR_ENROLL_ADDR, value: "airush-gateway:8082" }
+            - { name: AIRUSH_CONNECTOR_SESSION_ADDR, value: "airush-gateway:8083" }'
+"${KCTL[@]}" apply -f - >/dev/null <<YAML
+apiVersion: v1
+kind: Pod
+metadata:
+  name: airush-devverify-connector
+spec:
+  restartPolicy: Never
+  volumes:
+    - name: conn
+      emptyDir: {}
+  initContainers:
+    - name: enroll
+      image: ${REGISTRY:-ghcr.io/sqlrush/airush}/connector:latest
+      imagePullPolicy: Never
+      args: ["--enroll"]
+      volumeMounts: [ { name: conn, mountPath: /tmp/conn } ]
+      env:${env_common}
+        - { name: AIRUSH_CONNECTOR_ENROLL_TOKEN, value: "${tok}" }
+        - name: AIRUSH_CONNECTOR_ENROLL_CA_PEM
+          valueFrom: { secretKeyRef: { name: airush-connector-pki, key: ca.crt } }
+  containers:
+    - name: run
+      image: ${REGISTRY:-ghcr.io/sqlrush/airush}/connector:latest
+      imagePullPolicy: Never
+      args: ["--run"]
+      volumeMounts: [ { name: conn, mountPath: /tmp/conn } ]
+      env:${env_common}
+YAML
+ok=""
+for i in $(seq 1 30); do
+  st=$("${KCTL[@]}" exec airush-pg-0 -- psql -U postgres -d airush -tAc \
+    "SELECT status FROM connectors WHERE id='$cid'" | tr -d '[:space:]')
+  if [ "$st" = "online" ]; then ok="1"; break; fi
+  sleep 2
+done
+"${KCTL[@]}" delete pod airush-devverify-connector --ignore-not-found >/dev/null 2>&1
+[ -n "$ok" ] || fail "connector 未达 online 状态（末次: ${st:-none}）"
+echo "  connector e2e OK（enroll 签证 → mTLS 会话 → 心跳 → online）"
+
 echo "== helm 幂等（再次 upgrade 应零变更零重启） =="
 before=$("${KCTL[@]}" get pods -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | sort)
 helm upgrade --install airush deploy/charts/airush \

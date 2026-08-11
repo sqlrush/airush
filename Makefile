@@ -253,8 +253,8 @@ KIND_CLUSTER := airush-dev
 dev-up:
 	@kind get clusters 2>/dev/null | grep -qx $(KIND_CLUSTER) || \
 		kind create cluster --config deploy/kind/config.yaml
-	@$(MAKE) image-gateway image-console
-	kind load docker-image $(REGISTRY)/gateway:latest $(REGISTRY)/console:latest --name $(KIND_CLUSTER)
+	@$(MAKE) image-gateway image-console image-connector
+	kind load docker-image $(REGISTRY)/gateway:latest $(REGISTRY)/console:latest $(REGISTRY)/connector:latest --name $(KIND_CLUSTER)
 	helm upgrade --install airush deploy/charts/airush \
 		-f deploy/charts/airush/values-dev.yaml --wait --timeout 5m
 	@kubectl --context kind-$(KIND_CLUSTER) get pods
