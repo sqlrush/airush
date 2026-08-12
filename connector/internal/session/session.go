@@ -25,7 +25,7 @@ type Config struct {
 
 // Handler 指令处理器（通道无关，spec-1.17 直连接入器复用同一接口）。
 type Handler interface {
-	Handle(cmd *connectorv1.Command) *connectorv1.CommandResult
+	Handle(ctx context.Context, cmd *connectorv1.Command) *connectorv1.CommandResult
 }
 
 // Client 是会话循环。
@@ -113,7 +113,7 @@ func (c *Client) pump(ctx context.Context, stream connectorv1.SessionService_Ses
 				return
 			}
 			if cmd := frame.GetCommand(); cmd != nil {
-				results <- c.handler.Handle(cmd)
+				results <- c.handler.Handle(ctx, cmd)
 			}
 			if d := frame.GetDrain(); d != nil {
 				recvErr <- fmt.Errorf("session: drained: %s", d.GetReason())
