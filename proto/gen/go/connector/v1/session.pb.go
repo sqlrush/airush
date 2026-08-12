@@ -84,6 +84,7 @@ type ClientFrame struct {
 	//	*ClientFrame_Hello
 	//	*ClientFrame_Heartbeat
 	//	*ClientFrame_CommandResult
+	//	*ClientFrame_DataUpload
 	Frame         isClientFrame_Frame `protobuf_oneof:"frame"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -153,6 +154,15 @@ func (x *ClientFrame) GetCommandResult() *CommandResult {
 	return nil
 }
 
+func (x *ClientFrame) GetDataUpload() *DataUpload {
+	if x != nil {
+		if x, ok := x.Frame.(*ClientFrame_DataUpload); ok {
+			return x.DataUpload
+		}
+	}
+	return nil
+}
+
 type isClientFrame_Frame interface {
 	isClientFrame_Frame()
 }
@@ -169,11 +179,17 @@ type ClientFrame_CommandResult struct {
 	CommandResult *CommandResult `protobuf:"bytes,3,opt,name=command_result,json=commandResult,proto3,oneof"`
 }
 
+type ClientFrame_DataUpload struct {
+	DataUpload *DataUpload `protobuf:"bytes,4,opt,name=data_upload,json=dataUpload,proto3,oneof"` // spec-1.3 实装：结构化采集上报（AD-3 只结构化数据）
+}
+
 func (*ClientFrame_Hello) isClientFrame_Frame() {}
 
 func (*ClientFrame_Heartbeat) isClientFrame_Frame() {}
 
 func (*ClientFrame_CommandResult) isClientFrame_Frame() {}
+
+func (*ClientFrame_DataUpload) isClientFrame_Frame() {}
 
 type ServerFrame struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -692,6 +708,77 @@ func (x *CommandError) GetMessage() string {
 	return ""
 }
 
+// DataUpload 连接器→网关的结构化数据上报帧（spec-1.3：指标 batch；spec-1.4/1.5 复用
+// 承载慢日志/元数据等）。AD-3：只结构化脱敏数据，严禁原始行数据。gateway 收帧后
+// 转 Sink（Stage 1 buffer，spec-1.5 落 TimescaleDB）。
+type DataUpload struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	CommandId     string                 `protobuf:"bytes,1,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"` // 关联触发的 Command（同步 collect 用；异步自采可空）
+	DatasourceId  string                 `protobuf:"bytes,2,opt,name=datasource_id,json=datasourceId,proto3" json:"datasource_id,omitempty"`
+	Kind          string                 `protobuf:"bytes,3,opt,name=kind,proto3" json:"kind,omitempty"`       // "metrics"（spec-1.4 起扩展 slowlog/schema 等）
+	Payload       []byte                 `protobuf:"bytes,4,opt,name=payload,proto3" json:"payload,omitempty"` // 结构化 batch JSON
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DataUpload) Reset() {
+	*x = DataUpload{}
+	mi := &file_connector_v1_session_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DataUpload) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DataUpload) ProtoMessage() {}
+
+func (x *DataUpload) ProtoReflect() protoreflect.Message {
+	mi := &file_connector_v1_session_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DataUpload.ProtoReflect.Descriptor instead.
+func (*DataUpload) Descriptor() ([]byte, []int) {
+	return file_connector_v1_session_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *DataUpload) GetCommandId() string {
+	if x != nil {
+		return x.CommandId
+	}
+	return ""
+}
+
+func (x *DataUpload) GetDatasourceId() string {
+	if x != nil {
+		return x.DatasourceId
+	}
+	return ""
+}
+
+func (x *DataUpload) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *DataUpload) GetPayload() []byte {
+	if x != nil {
+		return x.Payload
+	}
+	return nil
+}
+
 // Drain 网关要求客户端体面退出（优雅下线 / 新连踢旧连 / 吊销）。
 type Drain struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -702,7 +789,7 @@ type Drain struct {
 
 func (x *Drain) Reset() {
 	*x = Drain{}
-	mi := &file_connector_v1_session_proto_msgTypes[9]
+	mi := &file_connector_v1_session_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -714,7 +801,7 @@ func (x *Drain) String() string {
 func (*Drain) ProtoMessage() {}
 
 func (x *Drain) ProtoReflect() protoreflect.Message {
-	mi := &file_connector_v1_session_proto_msgTypes[9]
+	mi := &file_connector_v1_session_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -727,7 +814,7 @@ func (x *Drain) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Drain.ProtoReflect.Descriptor instead.
 func (*Drain) Descriptor() ([]byte, []int) {
-	return file_connector_v1_session_proto_rawDescGZIP(), []int{9}
+	return file_connector_v1_session_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *Drain) GetReason() string {
@@ -741,12 +828,14 @@ var File_connector_v1_session_proto protoreflect.FileDescriptor
 
 const file_connector_v1_session_proto_rawDesc = "" +
 	"\n" +
-	"\x1aconnector/v1/session.proto\x12\fconnector.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xd5\x01\n" +
+	"\x1aconnector/v1/session.proto\x12\fconnector.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xff\x01\n" +
 	"\vClientFrame\x12+\n" +
 	"\x05hello\x18\x01 \x01(\v2\x13.connector.v1.HelloH\x00R\x05hello\x127\n" +
 	"\theartbeat\x18\x02 \x01(\v2\x17.connector.v1.HeartbeatH\x00R\theartbeat\x12D\n" +
-	"\x0ecommand_result\x18\x03 \x01(\v2\x1b.connector.v1.CommandResultH\x00R\rcommandResultB\a\n" +
-	"\x05frameJ\x04\b\x04\x10\x05R\vdata_upload\"\xf0\x01\n" +
+	"\x0ecommand_result\x18\x03 \x01(\v2\x1b.connector.v1.CommandResultH\x00R\rcommandResult\x12;\n" +
+	"\vdata_upload\x18\x04 \x01(\v2\x18.connector.v1.DataUploadH\x00R\n" +
+	"dataUploadB\a\n" +
+	"\x05frame\"\xf0\x01\n" +
 	"\vServerFrame\x125\n" +
 	"\thello_ack\x18\x01 \x01(\v2\x16.connector.v1.HelloAckH\x00R\bhelloAck\x12A\n" +
 	"\rheartbeat_ack\x18\x02 \x01(\v2\x1a.connector.v1.HeartbeatAckH\x00R\fheartbeatAck\x121\n" +
@@ -789,7 +878,14 @@ const file_connector_v1_session_proto_rawDesc = "" +
 	"\x12STATUS_UNSUPPORTED\x10\x03\"<\n" +
 	"\fCommandError\x12\x12\n" +
 	"\x04code\x18\x01 \x01(\tR\x04code\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\"\x1f\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\"~\n" +
+	"\n" +
+	"DataUpload\x12\x1d\n" +
+	"\n" +
+	"command_id\x18\x01 \x01(\tR\tcommandId\x12#\n" +
+	"\rdatasource_id\x18\x02 \x01(\tR\fdatasourceId\x12\x12\n" +
+	"\x04kind\x18\x03 \x01(\tR\x04kind\x12\x18\n" +
+	"\apayload\x18\x04 \x01(\fR\apayload\"\x1f\n" +
 	"\x05Drain\x12\x16\n" +
 	"\x06reason\x18\x01 \x01(\tR\x06reason2U\n" +
 	"\x0eSessionService\x12C\n" +
@@ -808,7 +904,7 @@ func file_connector_v1_session_proto_rawDescGZIP() []byte {
 }
 
 var file_connector_v1_session_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_connector_v1_session_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_connector_v1_session_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_connector_v1_session_proto_goTypes = []any{
 	(CommandResult_Status)(0),     // 0: connector.v1.CommandResult.Status
 	(*ClientFrame)(nil),           // 1: connector.v1.ClientFrame
@@ -820,30 +916,32 @@ var file_connector_v1_session_proto_goTypes = []any{
 	(*Command)(nil),               // 7: connector.v1.Command
 	(*CommandResult)(nil),         // 8: connector.v1.CommandResult
 	(*CommandError)(nil),          // 9: connector.v1.CommandError
-	(*Drain)(nil),                 // 10: connector.v1.Drain
-	nil,                           // 11: connector.v1.Heartbeat.HealthEntry
-	(*timestamppb.Timestamp)(nil), // 12: google.protobuf.Timestamp
+	(*DataUpload)(nil),            // 10: connector.v1.DataUpload
+	(*Drain)(nil),                 // 11: connector.v1.Drain
+	nil,                           // 12: connector.v1.Heartbeat.HealthEntry
+	(*timestamppb.Timestamp)(nil), // 13: google.protobuf.Timestamp
 }
 var file_connector_v1_session_proto_depIdxs = []int32{
 	3,  // 0: connector.v1.ClientFrame.hello:type_name -> connector.v1.Hello
 	5,  // 1: connector.v1.ClientFrame.heartbeat:type_name -> connector.v1.Heartbeat
 	8,  // 2: connector.v1.ClientFrame.command_result:type_name -> connector.v1.CommandResult
-	4,  // 3: connector.v1.ServerFrame.hello_ack:type_name -> connector.v1.HelloAck
-	6,  // 4: connector.v1.ServerFrame.heartbeat_ack:type_name -> connector.v1.HeartbeatAck
-	7,  // 5: connector.v1.ServerFrame.command:type_name -> connector.v1.Command
-	10, // 6: connector.v1.ServerFrame.drain:type_name -> connector.v1.Drain
-	12, // 7: connector.v1.Hello.started_at:type_name -> google.protobuf.Timestamp
-	12, // 8: connector.v1.HelloAck.server_time:type_name -> google.protobuf.Timestamp
-	11, // 9: connector.v1.Heartbeat.health:type_name -> connector.v1.Heartbeat.HealthEntry
-	0,  // 10: connector.v1.CommandResult.status:type_name -> connector.v1.CommandResult.Status
-	9,  // 11: connector.v1.CommandResult.error:type_name -> connector.v1.CommandError
-	1,  // 12: connector.v1.SessionService.Session:input_type -> connector.v1.ClientFrame
-	2,  // 13: connector.v1.SessionService.Session:output_type -> connector.v1.ServerFrame
-	13, // [13:14] is the sub-list for method output_type
-	12, // [12:13] is the sub-list for method input_type
-	12, // [12:12] is the sub-list for extension type_name
-	12, // [12:12] is the sub-list for extension extendee
-	0,  // [0:12] is the sub-list for field type_name
+	10, // 3: connector.v1.ClientFrame.data_upload:type_name -> connector.v1.DataUpload
+	4,  // 4: connector.v1.ServerFrame.hello_ack:type_name -> connector.v1.HelloAck
+	6,  // 5: connector.v1.ServerFrame.heartbeat_ack:type_name -> connector.v1.HeartbeatAck
+	7,  // 6: connector.v1.ServerFrame.command:type_name -> connector.v1.Command
+	11, // 7: connector.v1.ServerFrame.drain:type_name -> connector.v1.Drain
+	13, // 8: connector.v1.Hello.started_at:type_name -> google.protobuf.Timestamp
+	13, // 9: connector.v1.HelloAck.server_time:type_name -> google.protobuf.Timestamp
+	12, // 10: connector.v1.Heartbeat.health:type_name -> connector.v1.Heartbeat.HealthEntry
+	0,  // 11: connector.v1.CommandResult.status:type_name -> connector.v1.CommandResult.Status
+	9,  // 12: connector.v1.CommandResult.error:type_name -> connector.v1.CommandError
+	1,  // 13: connector.v1.SessionService.Session:input_type -> connector.v1.ClientFrame
+	2,  // 14: connector.v1.SessionService.Session:output_type -> connector.v1.ServerFrame
+	14, // [14:15] is the sub-list for method output_type
+	13, // [13:14] is the sub-list for method input_type
+	13, // [13:13] is the sub-list for extension type_name
+	13, // [13:13] is the sub-list for extension extendee
+	0,  // [0:13] is the sub-list for field type_name
 }
 
 func init() { file_connector_v1_session_proto_init() }
@@ -855,6 +953,7 @@ func file_connector_v1_session_proto_init() {
 		(*ClientFrame_Hello)(nil),
 		(*ClientFrame_Heartbeat)(nil),
 		(*ClientFrame_CommandResult)(nil),
+		(*ClientFrame_DataUpload)(nil),
 	}
 	file_connector_v1_session_proto_msgTypes[1].OneofWrappers = []any{
 		(*ServerFrame_HelloAck)(nil),
@@ -868,7 +967,7 @@ func file_connector_v1_session_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_connector_v1_session_proto_rawDesc), len(file_connector_v1_session_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   11,
+			NumMessages:   12,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

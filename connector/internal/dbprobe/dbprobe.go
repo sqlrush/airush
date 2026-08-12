@@ -21,6 +21,9 @@ import (
 // CommandProbeMetrics 是采集指令类型（平台下发，spec-1.3 §2.2）。
 const CommandProbeMetrics = "PROBE_METRICS"
 
+// DataUploadKindMetrics 是指标类上报的 kind（spec-1.4 起扩展 slowlog/schema 等）。
+const DataUploadKindMetrics = "metrics"
+
 // probeRequest 是 PROBE_METRICS 指令 payload。
 type probeRequest struct {
 	DatasourceID string `json:"datasource_id"`
@@ -48,31 +51,35 @@ func (h *Handler) Close() {
 	}
 }
 
-// Handle 处理 PROBE_METRICS 指令：运行探针、把 batch JSON 放进 CommandResult。
-// 其余指令类型返回 nil（交由链上其他 handler，如 BuiltinHandler 的 PING/ECHO）。
-func (h *Handler) Handle(ctx context.Context, cmd *connectorv1.Command) *connectorv1.CommandResult {
+// Handle 处理 PROBE_METRICS 指令：运行探针、把 batch JSON 装进 DataUpload 帧回发
+// （spec-1.3 §2.4：Connector 通道走 DataUpload → gateway 转 Sink）。采集/序列化失败
+// 回 CommandResult(error)。其余指令类型返回 nil（交由链上其他 handler 兜底）。
+func (h *Handler) Handle(ctx context.Context, cmd *connectorv1.Command) *connectorv1.ClientFrame {
 	if cmd.GetType() != CommandProbeMetrics {
 		return nil
 	}
 	var req probeRequest
 	if err := json.Unmarshal(cmd.GetPayload(), &req); err != nil {
-		return errResult(cmd.GetCommandId(), "AR_VALIDATION_FAILED", "PROBE_METRICS payload 非法")
+		return errFrame(cmd.GetCommandId(), "AR_VALIDATION_FAILED", "PROBE_METRICS payload 非法")
 	}
 
 	probe := metrics.Probe{DatasourceID: req.DatasourceID, EngineFamily: req.EngineFamily}
 	batch, err := probe.Collect(ctx, &querier{pool: h.pool})
 	if err != nil {
-		return errResult(cmd.GetCommandId(), "AR_METRICS_COLLECT_FAILED", "指标采集失败")
+		return errFrame(cmd.GetCommandId(), "AR_METRICS_COLLECT_FAILED", "指标采集失败")
 	}
 	payload, err := json.Marshal(batch)
 	if err != nil {
-		return errResult(cmd.GetCommandId(), "AR_INTERNAL_ERROR", "batch 序列化失败")
+		return errFrame(cmd.GetCommandId(), "AR_INTERNAL_ERROR", "batch 序列化失败")
 	}
-	return &connectorv1.CommandResult{
-		CommandId: cmd.GetCommandId(),
-		Status:    connectorv1.CommandResult_STATUS_OK,
-		Payload:   payload,
-	}
+	return &connectorv1.ClientFrame{Frame: &connectorv1.ClientFrame_DataUpload{
+		DataUpload: &connectorv1.DataUpload{
+			CommandId:    cmd.GetCommandId(),
+			DatasourceId: req.DatasourceID,
+			Kind:         DataUploadKindMetrics,
+			Payload:      payload,
+		},
+	}}
 }
 
 // querier 适配连接器 pgx 池到通道无关探针接口（与 directconn 同构，探针代码共享）。
@@ -93,10 +100,14 @@ func (q *querier) QueryMetricValue(ctx context.Context, sql string) (float64, bo
 
 type nullFloat = sql.NullFloat64
 
-func errResult(id, code, msg string) *connectorv1.CommandResult {
-	return &connectorv1.CommandResult{
-		CommandId: id,
-		Status:    connectorv1.CommandResult_STATUS_ERROR,
-		Error:     &connectorv1.CommandError{Code: code, Message: msg},
-	}
+// errFrame 把采集失败包成 CommandResult(error) 回发帧（spec-1.3 §2.4：失败走 CommandResult，
+// 成功走 DataUpload）。gateway 侧据 command_id 关联回触发方并映射错误码。
+func errFrame(id, code, msg string) *connectorv1.ClientFrame {
+	return &connectorv1.ClientFrame{Frame: &connectorv1.ClientFrame_CommandResult{
+		CommandResult: &connectorv1.CommandResult{
+			CommandId: id,
+			Status:    connectorv1.CommandResult_STATUS_ERROR,
+			Error:     &connectorv1.CommandError{Code: code, Message: msg},
+		},
+	}}
 }

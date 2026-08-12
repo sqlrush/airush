@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/url"
 	"strconv"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -25,6 +26,14 @@ import (
 )
 
 const devTenantID = "00000000-0000-0000-0000-000000000001"
+
+// countingConnector 记录 Connector 通道触发次数（TriggerCollect 由调度器周期调用）。
+type countingConnector struct{ calls atomic.Int64 }
+
+func (c *countingConnector) TriggerCollect(context.Context, string, string, string) error {
+	c.calls.Add(1)
+	return nil
+}
 
 func TestCollectorPeriodicAndLifecycle(t *testing.T) {
 	ctx := context.Background()
@@ -51,16 +60,22 @@ func TestCollectorPeriodicAndLifecycle(t *testing.T) {
 	host, port, password := parseConn(t, pg.ConnString)
 	tctx := tenancy.WithTenant(ctx, devTenantID)
 	dsID := createDirectDS(t, store, sealer, tctx, host, port, password)
+	createConnectorDS(t, store, tctx) // Connector 通道数据源：调度器经 fake 触发
+	// T6：不可达 Direct 数据源 → 采集失败退避，不阻断健康实例（隔离性）。
+	createNamedDirectDS(t, store, sealer, tctx, "collector-ds-bad", "127.0.0.1", 1, "x")
 
 	sink := metrics.NewBufferSink(64)
+	conn := &countingConnector{}
 	cfg := collector.Config{Interval: 300 * time.Millisecond, MinInterval: 100 * time.Millisecond, ReconcileEvery: 200 * time.Millisecond, Backoff: 100 * time.Millisecond}
-	c := collector.New(store, mgr, sink, cfg, devTenantID, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	c := collector.New(store, mgr, conn, sink, cfg, devTenantID, slog.New(slog.NewTextHandler(io.Discard, nil)))
 
 	runCtx, cancel := context.WithCancel(ctx)
 	go c.Run(runCtx)
 
-	// T5：周期采集产多批
+	// T5：周期采集产多批（Direct → sink）
 	waitFor(t, 4*time.Second, func() bool { return sink.Total() >= 2 })
+	// Connector 通道由调度器经 gateway 触发（fake 记录次数）
+	waitFor(t, 4*time.Second, func() bool { return conn.calls.Load() >= 1 })
 
 	// 生命周期：删除数据源 → 采集停（计数不再显著增长）
 	if err := store.InTenantTx(tctx, func(ctx context.Context, tx repo.Tx) error {
@@ -83,6 +98,11 @@ func TestCollectorPeriodicAndLifecycle(t *testing.T) {
 
 func createDirectDS(t *testing.T, store *repo.Store, sealer *credcrypto.Sealer, tctx context.Context, host string, port int, password string) string {
 	t.Helper()
+	return createNamedDirectDS(t, store, sealer, tctx, "collector-ds", host, port, password)
+}
+
+func createNamedDirectDS(t *testing.T, store *repo.Store, sealer *credcrypto.Sealer, tctx context.Context, name, host string, port int, password string) string {
+	t.Helper()
 	var id string
 	err := store.InTenantTx(tctx, func(ctx context.Context, tx repo.Tx) error {
 		ct, err := sealer.Seal([]byte(password))
@@ -94,7 +114,7 @@ func createDirectDS(t *testing.T, store *repo.Store, sealer *credcrypto.Sealer, 
 			return err
 		}
 		ds, err := repo.InsertDatasource(ctx, tx, repo.DatasourceInput{
-			Name: "collector-ds", EngineFamily: "postgres", ConnectMode: "direct",
+			Name: name, EngineFamily: "postgres", ConnectMode: "direct",
 			CredentialID: &credID, Host: host, Port: port, DatabaseName: "postgres",
 		})
 		id = ds.ID
@@ -102,6 +122,28 @@ func createDirectDS(t *testing.T, store *repo.Store, sealer *credcrypto.Sealer, 
 	})
 	if err != nil {
 		t.Fatalf("create ds: %v", err)
+	}
+	return id
+}
+
+// createConnectorDS 建一个 connector 模式数据源（含前置 connector 行满足 FK）。
+func createConnectorDS(t *testing.T, store *repo.Store, tctx context.Context) string {
+	t.Helper()
+	var id string
+	err := store.InTenantTx(tctx, func(ctx context.Context, tx repo.Tx) error {
+		conn, err := repo.InsertConnector(ctx, tx, repo.ConnectorInput{Name: "collector-conn", Location: "dev"})
+		if err != nil {
+			return err
+		}
+		ds, err := repo.InsertDatasource(ctx, tx, repo.DatasourceInput{
+			Name: "collector-conn-ds", EngineFamily: "postgres", ConnectMode: "connector",
+			ConnectorID: &conn.ID, Host: "unused", Port: 5432, DatabaseName: "postgres",
+		})
+		id = ds.ID
+		return err
+	})
+	if err != nil {
+		t.Fatalf("create connector ds: %v", err)
 	}
 	return id
 }

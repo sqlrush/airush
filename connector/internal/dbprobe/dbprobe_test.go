@@ -22,11 +22,12 @@ func TestHandlePassthroughNonMetrics(t *testing.T) {
 func TestHandleBadPayload(t *testing.T) {
 	t.Parallel()
 	h := &Handler{pool: nil}
-	res := h.Handle(context.Background(), &connectorv1.Command{
+	frame := h.Handle(context.Background(), &connectorv1.Command{
 		CommandId: "c1", Type: CommandProbeMetrics, Payload: []byte("not-json"),
 	})
+	res := frame.GetCommandResult()
 	if res == nil || res.GetStatus() != connectorv1.CommandResult_STATUS_ERROR ||
 		res.GetError().GetCode() != "AR_VALIDATION_FAILED" {
-		t.Fatalf("bad payload = %+v", res)
+		t.Fatalf("bad payload = %+v", frame)
 	}
 }

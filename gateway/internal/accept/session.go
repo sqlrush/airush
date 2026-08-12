@@ -3,7 +3,9 @@ package accept
 import (
 	"context"
 	"crypto/x509"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -13,6 +15,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/sqlrush/airush/gateway/internal/consoleclient"
+	"github.com/sqlrush/airush/libs/metrics"
 	connectorv1 "github.com/sqlrush/airush/proto/gen/go/connector/v1"
 )
 
@@ -38,20 +41,56 @@ type SessionServer struct {
 	console  *consoleclient.Client
 	registry *registry
 	cfg      SessionConfig
+	sink     metrics.Sink // DataUpload 落点（spec-1.3 §2.4：gateway 转 Sink）
 	logger   *slog.Logger
 	nowFn    func() time.Time
 }
 
-// NewSessionServer 构造。
-func NewSessionServer(console *consoleclient.Client, cfg SessionConfig, logger *slog.Logger) *SessionServer {
+// NewSessionServer 构造。sink 为 nil 时用丢弃 Sink（无 Connector 采集消费者的形态）。
+func NewSessionServer(console *consoleclient.Client, cfg SessionConfig, sink metrics.Sink, logger *slog.Logger) *SessionServer {
+	if sink == nil {
+		sink = discardSink{}
+	}
 	return &SessionServer{
-		console: console, registry: newRegistry(), cfg: cfg, logger: logger,
+		console: console, registry: newRegistry(), cfg: cfg, sink: sink, logger: logger,
 		nowFn: time.Now,
 	}
 }
 
+// discardSink 在未配置消费者时吞掉上报（保证 loop 不 panic；生产必注入 buffer/TSDB Sink）。
+type discardSink struct{}
+
+func (discardSink) Publish(context.Context, metrics.Batch) error { return nil }
+
 // DrainAll 供优雅下线调用（广播 Drain）。
 func (s *SessionServer) DrainAll(reason string) { s.registry.drainAll(reason) }
+
+// ErrConnectorOffline 表示目标连接器无活跃会话。
+var ErrConnectorOffline = errors.New("connector has no active session")
+
+// Dispatch 向指定连接器下发一条指令并等待其终态（spec-1.3 平台驱动采集）：成功回 nil
+// （采集数据已由 loop 收 DataUpload 落 Sink），失败回错误码，连接器离线回 ErrConnectorOffline，
+// 超时由 ctx 控制。
+func (s *SessionServer) Dispatch(ctx context.Context, connectorID string, cmd *connectorv1.Command) error {
+	sess, ok := s.registry.get(connectorID)
+	if !ok {
+		return ErrConnectorOffline
+	}
+	sig := sess.awaitCommand(cmd.GetCommandId())
+	select {
+	case sess.commands <- cmd:
+	case <-ctx.Done():
+		sess.cancelCommand(cmd.GetCommandId())
+		return ctx.Err()
+	}
+	select {
+	case err := <-sig:
+		return err
+	case <-ctx.Done():
+		sess.cancelCommand(cmd.GetCommandId())
+		return ctx.Err()
+	}
+}
 
 // Session 是 bidi stream 主循环。
 func (s *SessionServer) Session(stream connectorv1.SessionService_SessionServer) error {
@@ -80,7 +119,7 @@ func (s *SessionServer) Session(stream connectorv1.SessionService_SessionServer)
 		return handshakeGRPCError(err)
 	}
 
-	sess := &session{connectorID: hello.GetConnectorId(), tenantID: tenantID, drain: make(chan string, 1)}
+	sess := newSession(hello.GetConnectorId(), tenantID)
 	s.registry.add(sess)
 	defer s.registry.remove(sess)
 	s.setStatus(ctx, sess, "online", timePtr(s.nowFn()))
@@ -136,18 +175,68 @@ func (s *SessionServer) loop(stream connectorv1.SessionService_SessionServer, se
 		case <-offline.C:
 			s.setStatus(context.Background(), sess, "offline", nil)
 			return status.Error(codes.DeadlineExceeded, "AR_CONNECTOR_OFFLINE")
-		case f := <-frames:
-			if hb := f.GetHeartbeat(); hb != nil {
-				resetTimer(degrade, degradedAfter)
-				resetTimer(offline, s.cfg.OfflineTimeout)
-				s.setStatus(ctx, sess, "online", timePtr(s.nowFn()))
-				_ = stream.Send(&connectorv1.ServerFrame{Frame: &connectorv1.ServerFrame_HeartbeatAck{
-					HeartbeatAck: &connectorv1.HeartbeatAck{Seq: hb.GetSeq()},
-				}})
+		case cmd := <-sess.commands:
+			// 平台下发指令（spec-1.3 采集等）：经 stream 发给连接器，终态由回帧关联回。
+			if err := stream.Send(&connectorv1.ServerFrame{Frame: &connectorv1.ServerFrame_Command{
+				Command: cmd,
+			}}); err != nil {
+				sess.signalCommand(cmd.GetCommandId(), fmt.Errorf("send command: %w", err))
 			}
-			// CommandResult 处理留 Stage 2 执行链；本 spec 仅 PING/ECHO 由测试驱动 Command 下发
+		case f := <-frames:
+			s.onClientFrame(ctx, stream, sess, f, degrade, offline, degradedAfter)
 		}
 	}
+}
+
+// onClientFrame 处理连接器上行帧：心跳（状态机 + ack）、DataUpload（落 Sink，spec-1.3）、
+// CommandResult（关联回触发方，PING/ECHO 或采集失败）。
+func (s *SessionServer) onClientFrame(ctx context.Context, stream connectorv1.SessionService_SessionServer,
+	sess *session, f *connectorv1.ClientFrame, degrade, offline *time.Timer, degradedAfter time.Duration,
+) {
+	if hb := f.GetHeartbeat(); hb != nil {
+		resetTimer(degrade, degradedAfter)
+		resetTimer(offline, s.cfg.OfflineTimeout)
+		s.setStatus(ctx, sess, "online", timePtr(s.nowFn()))
+		_ = stream.Send(&connectorv1.ServerFrame{Frame: &connectorv1.ServerFrame_HeartbeatAck{
+			HeartbeatAck: &connectorv1.HeartbeatAck{Seq: hb.GetSeq()},
+		}})
+	}
+	if du := f.GetDataUpload(); du != nil {
+		s.handleDataUpload(ctx, sess, du) // spec-1.3：DataUpload → Sink + 关联回触发方
+	}
+	if res := f.GetCommandResult(); res != nil {
+		sess.signalCommand(res.GetCommandId(), commandResultErr(res))
+	}
+}
+
+// handleDataUpload 落库 DataUpload 携带的 batch 到 Sink，并关联回触发方（spec-1.3 T11）。
+// AD-3：只接受结构化 batch；payload 非法/落 Sink 失败都回错误码给触发方（fail-closed）。
+func (s *SessionServer) handleDataUpload(ctx context.Context, sess *session, du *connectorv1.DataUpload) {
+	var batch metrics.Batch
+	if err := json.Unmarshal(du.GetPayload(), &batch); err != nil {
+		s.logger.Warn("data upload decode failed",
+			"connector_id", sess.connectorID, "kind", du.GetKind(), "err", err)
+		sess.signalCommand(du.GetCommandId(), fmt.Errorf("AR_METRICS_COLLECT_FAILED: decode batch"))
+		return
+	}
+	if err := s.sink.Publish(ctx, batch); err != nil {
+		s.logger.Warn("data upload sink publish failed", "connector_id", sess.connectorID, "err", err)
+		sess.signalCommand(du.GetCommandId(), fmt.Errorf("AR_METRICS_COLLECT_FAILED: sink publish"))
+		return
+	}
+	sess.signalCommand(du.GetCommandId(), nil)
+}
+
+// commandResultErr 把连接器回的 CommandResult 映射为 Dispatch 信号：非 OK 转错误码。
+func commandResultErr(res *connectorv1.CommandResult) error {
+	if res.GetStatus() == connectorv1.CommandResult_STATUS_OK {
+		return nil
+	}
+	code := res.GetError().GetCode()
+	if code == "" {
+		code = "AR_INTERNAL_ERROR"
+	}
+	return errors.New(code)
 }
 
 // resetTimer 安全重置（先停并排空，避免旧信号误触发）。
