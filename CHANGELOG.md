@@ -8,6 +8,20 @@
 
 ### Added
 
+- 慢日志与元数据采集（spec-1.4，AD-3/AD-9）：复用探针框架的第二类采集——**快照**（行结构数据）：
+  - libs/metrics：`Snapshot` 信封 + SlowQueryEntry/TableInfo/ConfigEntry 强类型条目 + 三类
+    编译期目录（慢查询源候选链 pg_stat_statements → openGauss dbe_perf、表结构 pg_catalog、
+    配置 pg_settings 全量）+ `SnapshotProbe`（对新增 `RowQuerier` 执行，与指标探针并列不改其契约）
+    + `SnapshotSink`；能力缺失（如未装 pg_stat_statements）走 CapabilityMissing 结构化降级而非报错；
+  - 慢查询文本只取统计视图的**规范化**语句（字面量已占位），显式禁 pg_stat_activity.query——
+    spec-1.6 脱敏引擎落地前的 AD-3 编译期防线，真 openGauss 上以字面量金丝雀实证；
+  - 尺寸有界：TopN 50/表 500/文本 2048 字符/快照 512KB，超限截断并标记；
+  - Direct 通道：directconn.SnapshotQuerier → 本进程 SnapshotSink；Connector 通道：
+    PROBE_SLOWLOG/PROBE_SCHEMA/PROBE_CONFIG 三指令（每 kind 一类型即白名单，payload 零 SQL）
+    → DataUpload(kind) → gateway 分流落 SnapshotSink；collect API 增 kind（缺省 metrics 向后兼容），
+    未知 kind 在平台与连接器双侧拒绝；
+  - 调度器改为每 datasource×kind 一循环，分 kind 间隔（指标 60s/慢查询 300s/元数据 3600s，各带下限护栏）；
+  - 新错误码 AR_SNAPSHOT_COLLECT_FAILED/AR_COLLECT_UNSUPPORTED_KIND。
 - 指标采集（spec-1.3，AD-3/AD-7）：一套探针两通道运行——
   - libs/metrics：引擎无关探针（对最小 `Querier` 执行目录 SQL）+ Stage-1 openGauss/PG
     指标目录（连接数/TPS/缓存命中率/复制延迟/锁等待/长事务/库大小，聚合系统视图零行级数据）
