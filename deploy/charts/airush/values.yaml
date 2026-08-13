@@ -26,6 +26,8 @@ console:
   credentialKekSecret: ""
   credentialKekId: v1
   defaultTenantId: "00000000-0000-0000-0000-000000000001"
+  # 指标采集间隔（spec-1.3；15s..3600s，下限护栏 15s）。dev 用短值加速 dev-verify。
+  metricsInterval: "60s"
   migrate:
     enabled: true
 

@@ -33,6 +33,7 @@ const (
 	CodeSvcUnauthenticated Code = "AR_SVC_UNAUTHENTICATED"
 	CodeDatasourceConnectFailed Code = "AR_DATASOURCE_CONNECT_FAILED"
 	CodeDatasourceTestTimeout Code = "AR_DATASOURCE_TEST_TIMEOUT"
+	CodeMetricsCollectFailed Code = "AR_METRICS_COLLECT_FAILED"
 )
 
 var codeMeta = map[Code]Meta{
@@ -65,4 +66,5 @@ var codeMeta = map[Code]Meta{
 	CodeSvcUnauthenticated: {Level: "E2", HTTP: 401, Message: "服务间认证失败", Deprecated: false},
 	CodeDatasourceConnectFailed: {Level: "E5", HTTP: 502, Message: "数据源连接失败", Deprecated: false},
 	CodeDatasourceTestTimeout: {Level: "E5", HTTP: 504, Message: "数据源连接测试超时", Deprecated: false},
+	CodeMetricsCollectFailed: {Level: "E5", HTTP: 502, Message: "指标采集失败", Deprecated: false},
 }

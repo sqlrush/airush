@@ -20,7 +20,7 @@
 | [spec-1.1](spec-1.1-domain-model-api.md) | 控制面领域模型与 API 骨架 | shipped | 2026-08-10 | 2026-08-10 |
 | [spec-1.2](spec-1.2-connector-core.md) | Connector 核心（参照模板级） | frozen · 实施完成 | 2026-08-11 | — |
 | [spec-1.17](spec-1.17-direct-connect.md) | 直连接入模式（AD-2②） | frozen · 实施完成 | 2026-08-11 | — |
-| [spec-1.3](spec-1.3-metrics-collection.md) | openGauss 采集：指标 | frozen · 实施中 | 2026-08-11 | — |
+| [spec-1.3](spec-1.3-metrics-collection.md) | openGauss 采集：指标 | frozen · 实施完成 | 2026-08-11 | — |
 | [spec-1.4](spec-1.4-slowlog-metadata.md) | openGauss 采集：慢日志与元数据 | frozen | 2026-08-12 | — |
 
 完整规划清单见 `docs/development-roadmap.md` 第 2-4 节；spec 文件在进入起草时才创建。

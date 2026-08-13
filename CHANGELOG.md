@@ -8,6 +8,19 @@
 
 ### Added
 
+- 指标采集（spec-1.3，AD-3/AD-7）：一套探针两通道运行——
+  - libs/metrics：引擎无关探针（对最小 `Querier` 执行目录 SQL）+ Stage-1 openGauss/PG
+    指标目录（连接数/TPS/缓存命中率/复制延迟/锁等待/长事务/库大小，聚合系统视图零行级数据）
+    + `Batch`（含 catalog_version/partial/missing）+ label 白名单（防高基数/防原始数据）+ `Sink`
+    接口与内存 buffer 实现（spec-1.5 换 TimescaleDB）；
+  - Direct 通道：directconn.Querier 适配 + console 采集调度器（每 datasource 周期循环、
+    确定性抖动、失败指数退避不阻断其他实例、datasource 增删即起停）→ 本进程 Sink；
+  - Connector 通道：连接器侧 dbprobe（客户网络内直连客户库，凭据客户侧 AD-4 不变）执行探针，
+    经 DataUpload 帧（proto ClientFrame 字段 4，spec-1.2 预留位实装）回传结构化 batch；
+    gateway 会话下发 PROBE_METRICS 指令 + 内部 collect API（svc-token）触发、收 DataUpload
+    落 gateway Sink（"gateway 转 Sink"），采集失败经 CommandResult 回错误码；
+  - 新错误码 AR_METRICS_COLLECT_FAILED（E5/502）；采集器接入 console/gateway 运行时装配。
+
 - 直连接入模式（spec-1.17，AD-2②）：
   - libs/accessor 通道无关 Accessor 抽象（Connector/Direct 双实现共享 BuiltinDispatch，只读护栏）；
   - console/internal/directconn：从 credcrypto 解密凭据 → 每 datasource pgx 连接池

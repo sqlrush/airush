@@ -6,6 +6,8 @@ console:
   enabled: true
   # 仅 kind 开发环境的固定 KEK（32 字节假密钥的 base64）；任何共享环境必须换 Secret
   credentialKek: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+  # dev 短采集间隔（下限护栏 15s）：加速 dev-verify Direct 采集断言（spec-1.3）
+  metricsInterval: "15s"
   resources:
     requests: { cpu: 100m, memory: 128Mi }
     limits: { cpu: 500m, memory: 256Mi }

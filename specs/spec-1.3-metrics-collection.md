@@ -211,3 +211,18 @@ B 一刀切不适配实例差异；C 慢实例会累积采集协程耗尽资源�
 - spec-1.6：脱敏引擎挂在 Connector 探针与上报之间（指标近 no-op，慢日志 spec-1.4 才吃重）；
 - spec-1.10+：巡检/分析 skill 读采集数据产报告；
 - spec-1.16：Stage 1 验收的采集上报性能基线在此 spec 留埋点。
+
+## §11 实施 changelog（frozen 后追加，不改上文）
+
+- **2026-08-12 实施完成**：
+  - §2.4 帧选择定案（消解"CommandResult / DataUpload"择一歧义，与 T11/DoD 对齐）：
+    Connector 通道**成功回 `DataUpload` 帧**（proto `ClientFrame` 字段 4，兑现 spec-1.2
+    预留位）承载 batch，gateway 会话 loop 收帧落其 **Sink**（"gateway 转 Sink"）；
+    **采集失败回 `CommandResult(error)`** 携注册错误码，gateway 关联回触发方。两通道 Sink
+    分置（Direct→console buffer、Connector→gateway buffer），spec-1.5 统一至 TimescaleDB。
+  - 平台驱动：collector（console）经 gateway 内部 `POST /internal/v1/collect`（svc-token）
+    触发下发 `PROBE_METRICS`；该端点只回触发终态，数据不经此回流（走 DataUpload→Sink）。
+  - proto：`ClientFrame` 字段 4 由 reserved 实装为 `DataUpload`；buf breaking 对该
+    "填充自留槽位"以 `ignore_only`（仅 session.proto/RESERVED_MESSAGE_NO_DELETE）豁免。
+  - 覆盖率合并口径达标：libs-metrics 94.6%、connector 84.8%、gateway 81.1%、console 82.3%。
+  - dev-verify 增 Direct 采集心跳断言（对内置 PG）；T1-T11 全过。

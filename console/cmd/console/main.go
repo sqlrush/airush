@@ -33,6 +33,9 @@ type appConfig struct {
 	// spec-1.17：直连接入器连接池参数。
 	DirectIdleTTL        time.Duration `env:"DIRECT_IDLE_TTL"        default:"10m"`
 	DirectConnectTimeout time.Duration `env:"DIRECT_CONNECT_TIMEOUT" default:"8s"`
+	// spec-1.3：指标采集调度。GatewayURL 为空则只跑 Direct 通道（Connector 数据源跳过）。
+	GatewayURL      string        `env:"GATEWAY_URL"      default:""`
+	MetricsInterval time.Duration `env:"METRICS_INTERVAL" default:"60s"`
 }
 
 // version 由构建期 -ldflags 注入（spec-0.10/0.11 定版链路）。

@@ -59,6 +59,29 @@ echo "$tc" | grep -qE 'AR_DATASOURCE_(CONNECT_FAILED|TEST_TIMEOUT)' || fail "tes
 echo "$tc" | grep -q 'dev-verify-secret' && fail "test-connection 响应泄漏凭据明文"
 echo "  console API OK（201/幂等 409、列表可见、密文无明文、test-connection 错误码+无泄漏）"
 
+echo "== 指标采集（spec-1.3：Direct 通道采一批） =="
+"${KCTL[@]}" port-forward svc/airush-console 18080:8080 >/dev/null 2>&1 &
+PF=$!
+sleep 2
+# 建可达 Direct 数据源（指向内置 PG）→ 采集器周期采集
+code=$(curl -s -o /tmp/airush-collect-ds.json -w '%{http_code}' -X POST http://localhost:18080/api/v1/datasources \
+  -H 'Content-Type: application/json' -d '{
+    "name":"dev-verify-collect","engine_family":"postgres","engine":"postgres",
+    "connect_mode":"direct","host":"airush-pg","port":5432,"database_name":"airush",
+    "credential":{"username":"postgres","password":"airush-dev-pg"}}')
+if [ "$code" != "201" ] && [ "$code" != "409" ]; then kill $PF 2>/dev/null; fail "创建采集数据源失败 http=$code $(cat /tmp/airush-collect-ds.json)"; fi
+cdsid=$(curl -sf http://localhost:18080/api/v1/datasources | sed -n 's/.*"id":"\([0-9a-f-]*\)","name":"dev-verify-collect".*/\1/p')
+kill $PF 2>/dev/null
+[ -n "$cdsid" ] || fail "未取到 dev-verify-collect 数据源 id"
+# 采集器周期采集（dev interval=15s + 抖动）→ console 日志出现该数据源采集心跳
+ok=""
+for i in $(seq 1 12); do
+  if "${KCTL[@]}" logs deploy/airush-console --since=120s 2>/dev/null | grep -q "metrics collected.*$cdsid"; then ok="1"; break; fi
+  sleep 5
+done
+[ -n "$ok" ] || fail "采集器未对 dev-verify-collect 采到批（console 日志无 metrics collected）"
+echo "  指标采集 OK（Direct 通道对内置 PG 周期采集心跳可见）"
+
 echo "== connector 接入 e2e（spec-1.2：enroll → session → online） =="
 # 幂等前置（spec-0.12 §3 从零语义）：清理上次遗留的 dev-verify-conn
 "${KCTL[@]}" exec airush-pg-0 -- psql -U postgres -d airush -c \

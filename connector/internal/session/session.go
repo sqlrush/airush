@@ -24,8 +24,10 @@ type Config struct {
 }
 
 // Handler 指令处理器（通道无关，spec-1.17 直连接入器复用同一接口）。
+// 返回待回发的 ClientFrame：PING/ECHO 回 CommandResult，采集回 DataUpload（spec-1.3），
+// 失败回 CommandResult(error)。返回 nil 表示本 handler 不认此指令（交链上下一个）。
 type Handler interface {
-	Handle(cmd *connectorv1.Command) *connectorv1.CommandResult
+	Handle(ctx context.Context, cmd *connectorv1.Command) *connectorv1.ClientFrame
 }
 
 // Client 是会话循环。
@@ -104,7 +106,7 @@ func (c *Client) runOnce(ctx context.Context) error {
 // SendMsg 非并发安全，不可从多 goroutine 调用。
 func (c *Client) pump(ctx context.Context, stream connectorv1.SessionService_SessionClient, interval time.Duration) error {
 	recvErr := make(chan error, 1)
-	results := make(chan *connectorv1.CommandResult, 4)
+	results := make(chan *connectorv1.ClientFrame, 4)
 	go func() {
 		for {
 			frame, err := stream.Recv()
@@ -113,7 +115,9 @@ func (c *Client) pump(ctx context.Context, stream connectorv1.SessionService_Ses
 				return
 			}
 			if cmd := frame.GetCommand(); cmd != nil {
-				results <- c.handler.Handle(cmd)
+				if out := c.handler.Handle(ctx, cmd); out != nil {
+					results <- out
+				}
 			}
 			if d := frame.GetDrain(); d != nil {
 				recvErr <- fmt.Errorf("session: drained: %s", d.GetReason())
@@ -131,11 +135,9 @@ func (c *Client) pump(ctx context.Context, stream connectorv1.SessionService_Ses
 			return ctx.Err()
 		case err := <-recvErr:
 			return err
-		case res := <-results:
-			if err := stream.Send(&connectorv1.ClientFrame{Frame: &connectorv1.ClientFrame_CommandResult{
-				CommandResult: res,
-			}}); err != nil {
-				return fmt.Errorf("session: send command result: %w", err)
+		case frame := <-results:
+			if err := stream.Send(frame); err != nil {
+				return fmt.Errorf("session: send result frame: %w", err)
 			}
 		case <-ticker.C:
 			seq++
