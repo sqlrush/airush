@@ -205,5 +205,5 @@ SPEC（编码前讨论） → TDD 编码 → 集成测试 → Code Review → Re
 | spec-1.2 | **frozen · 实施完成**（T1-T12 全过；dev-verify connector e2e online；覆盖率合并口径达标）| 2026-08-11 起草、approve、实施 |
 | spec-1.17 | **frozen · 实施完成**（T1-T10 全过；directconn 真 PG 集成；覆盖率达标）| 2026-08-11 起草、approve、实施 |
 | spec-1.3 | **frozen · 实施中**（user approve，Q1-Q5 全采★） | 2026-08-11 起草并 approve |
-| spec-1.4 | **DRAFT — 待 user approve**（快照采集：慢查询统计/表结构/实例配置，复用探针框架 + RowQuerier/Snapshot 扩展，能力探测降级） | 2026-08-12 起草 |
+| spec-1.4 | **frozen · 实施中**（快照采集：慢查询统计/表结构/实例配置，复用探针框架 + RowQuerier/Snapshot 扩展，能力探测降级；Q1-Q6 全采★） | 2026-08-12 起草并 approve |
 | 其余 Stage 1 specs | 按序起草（严格事前 approve） | — |

@@ -1,6 +1,6 @@
 # spec-1.4 openGauss（PG 协议族）采集：慢日志与元数据
 
-> **DRAFT — 待 user approve**（起草 2026-08-12）
+> **frozen** — user approve 2026-08-12（Q1-Q6 全采★；无新依赖，复用 pgx；无 proto 变更）
 
 ## Header / 元数据
 
