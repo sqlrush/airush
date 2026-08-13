@@ -16,6 +16,7 @@ import (
 	"google.golang.org/grpc/credentials"
 
 	"github.com/sqlrush/airush/connector/internal/conf"
+	"github.com/sqlrush/airush/connector/internal/dbprobe"
 	"github.com/sqlrush/airush/connector/internal/enroll"
 	"github.com/sqlrush/airush/connector/internal/session"
 	"github.com/sqlrush/airush/libs/config"
@@ -35,6 +36,8 @@ type appConfig struct {
 	EnrollToken string `env:"ENROLL_TOKEN" secret:"true"`
 	// EnrollCAPEM：注册端 server-TLS 的信任根（PEM 内容或空=用系统根）。
 	EnrollCAPEM string `env:"ENROLL_CA_PEM"`
+	// DBURL：客户库直连串（spec-1.3；凭据客户侧，AD-4）。空=不挂采集探针（仅 PING/ECHO）。
+	DBURL string `env:"DB_URL" secret:"true"`
 }
 
 // version 由构建期 -ldflags 注入。
@@ -113,9 +116,22 @@ func mustRun(cfg appConfig) {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	// 采集探针（spec-1.3）：配置了本地 DB 目标则挂 dbprobe，处理 PROBE_METRICS；
+	// 否则仅 PING/ECHO。DB 连接在客户网络内、凭据客户侧（AD-4 不变）。
+	var handler session.Handler = session.BuiltinHandler{}
+	if cfg.DBURL != "" {
+		probe, err := dbprobe.New(ctx, cfg.DBURL)
+		if err != nil {
+			fatal(err.Error())
+		}
+		defer probe.Close()
+		handler = session.ChainHandler{probe, session.BuiltinHandler{}}
+	}
+
 	client := session.New(session.Config{
 		GatewayAddr: cfg.SessionAddr, ConnectorID: connectorID, Version: version,
-	}, creds, session.BuiltinHandler{}, provider.Logger)
+	}, creds, handler, provider.Logger)
 	if err := client.Run(ctx); err != nil && ctx.Err() == nil {
 		fatal(err.Error())
 	}

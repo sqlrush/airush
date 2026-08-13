@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -24,6 +25,7 @@ import (
 
 	"github.com/sqlrush/airush/gateway/internal/accept"
 	"github.com/sqlrush/airush/gateway/internal/consoleclient"
+	"github.com/sqlrush/airush/libs/metrics"
 	connectorv1 "github.com/sqlrush/airush/proto/gen/go/connector/v1"
 )
 
@@ -114,6 +116,7 @@ type fixture struct {
 	console     *fakeConsole
 	consoleSrv  *httptest.Server
 	servers     *accept.Servers
+	sink        *metrics.BufferSink // Connector DataUpload 落点（spec-1.3 T11）
 	sessionAddr string
 	enrollAddr  string
 }
@@ -127,9 +130,10 @@ func newFixture(t *testing.T, cfg accept.SessionConfig) *fixture {
 
 	gwCert, gwKey := ca.issueServer(t)
 	client := consoleclient.New(consoleSrv.URL, "tok")
+	sink := metrics.NewBufferSink(64)
 	servers, err := accept.Build(client, accept.TLSMaterial{
 		ServerCertPEM: gwCert, ServerKeyPEM: gwKey, ClientCAPEM: ca.certPEM,
-	}, cfg, accept.Deps{Logger: testLogger()})
+	}, cfg, accept.Deps{Logger: testLogger(), Sink: sink})
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}
@@ -139,7 +143,7 @@ func newFixture(t *testing.T, cfg accept.SessionConfig) *fixture {
 	t.Cleanup(func() { servers.GracefulStop("teardown") })
 
 	return &fixture{
-		ca: ca, console: fc, consoleSrv: consoleSrv, servers: servers,
+		ca: ca, console: fc, consoleSrv: consoleSrv, servers: servers, sink: sink,
 		sessionAddr: sessionLn.Addr().String(), enrollAddr: enrollLn.Addr().String(),
 	}
 }
@@ -362,6 +366,107 @@ func TestEnrollRPC(t *testing.T) {
 	_, err = client.Enroll(context.Background(), &connectorv1.EnrollRequest{})
 	if st, _ := status.FromError(err); st.Code() != codes.InvalidArgument {
 		t.Fatalf("empty enroll code = %v, want InvalidArgument", st.Code())
+	}
+}
+
+// TestConnectorDataUploadToSink spec-1.3 T11：平台经 Dispatch 下发 PROBE_METRICS，
+// 连接器回 DataUpload 帧携带 batch，gateway 落 Sink 收讫，Dispatch 得成功终态。
+func TestConnectorDataUploadToSink(t *testing.T) {
+	f := newFixture(t, accept.DefaultSessionConfig())
+	cert, key := f.ca.issueClient(t, connID, tenantID)
+	conn, stream := f.dialSession(t, cert, key)
+	defer func() { _ = conn.Close() }()
+	if err := sendHello(stream, connID); err != nil {
+		t.Fatalf("hello: %v", err)
+	}
+	if _, err := stream.Recv(); err != nil {
+		t.Fatalf("ack: %v", err)
+	}
+	waitFor(t, func() bool { return f.console.sawStatus("online") }, "online")
+
+	go respondMetrics(stream) // 假连接器：收到 PROBE_METRICS 即回 DataUpload(batch)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := &connectorv1.Command{CommandId: "cmd-1", Type: "PROBE_METRICS", Payload: []byte(`{"datasource_id":"ds1"}`)}
+	if err := f.servers.Dispatch(ctx, connID, cmd); err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	if f.sink.Total() != 1 {
+		t.Fatalf("sink total = %d, want 1", f.sink.Total())
+	}
+	got, ok := f.sink.Latest()
+	if !ok || got.DatasourceID != "ds1" || len(got.Metrics) != 1 {
+		t.Fatalf("sink batch = %+v ok=%v", got, ok)
+	}
+}
+
+// TestCollectHandlerE2E spec-1.3 D4：collector → gateway 内部 collect API（HTTP，svc-token）
+// → 下发 → 连接器回 DataUpload → 落 Sink，端点回 200。
+func TestCollectHandlerE2E(t *testing.T) {
+	f := newFixture(t, accept.DefaultSessionConfig())
+	cert, key := f.ca.issueClient(t, connID, tenantID)
+	conn, stream := f.dialSession(t, cert, key)
+	defer func() { _ = conn.Close() }()
+	if err := sendHello(stream, connID); err != nil {
+		t.Fatalf("hello: %v", err)
+	}
+	if _, err := stream.Recv(); err != nil {
+		t.Fatalf("ack: %v", err)
+	}
+	waitFor(t, func() bool { return f.console.sawStatus("online") }, "online")
+	go respondMetrics(stream)
+
+	ts := httptest.NewServer(accept.CollectHandler(f.servers, "collect-tok"))
+	defer ts.Close()
+	body := `{"connector_id":"` + connID + `","datasource_id":"ds1","engine_family":"postgres"}`
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/internal/v1/collect", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer collect-tok")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("collect POST: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("collect status = %d, want 200", resp.StatusCode)
+	}
+	if f.sink.Total() != 1 {
+		t.Fatalf("sink total = %d, want 1", f.sink.Total())
+	}
+}
+
+// respondMetrics 模拟连接器：对 PROBE_METRICS 回 DataUpload 帧携带最小 batch。
+func respondMetrics(stream connectorv1.SessionService_SessionClient) {
+	for {
+		fr, err := stream.Recv()
+		if err != nil {
+			return
+		}
+		cmd := fr.GetCommand()
+		if cmd == nil || cmd.GetType() != "PROBE_METRICS" {
+			continue
+		}
+		batch := metrics.Batch{
+			DatasourceID: "ds1", EngineFamily: "postgres", CatalogVersion: metrics.CatalogVersion,
+			Metrics: []metrics.Metric{{Name: "pg.connections.active", Value: 5, Unit: metrics.UnitCount}},
+		}
+		payload, _ := json.Marshal(batch)
+		_ = stream.Send(&connectorv1.ClientFrame{Frame: &connectorv1.ClientFrame_DataUpload{
+			DataUpload: &connectorv1.DataUpload{
+				CommandId: cmd.GetCommandId(), DatasourceId: "ds1", Kind: "metrics", Payload: payload,
+			},
+		}})
+	}
+}
+
+// TestDispatchOfflineConnector spec-1.3：目标连接器无会话 → Dispatch 返回 offline。
+func TestDispatchOfflineConnector(t *testing.T) {
+	f := newFixture(t, accept.DefaultSessionConfig())
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	err := f.servers.Dispatch(ctx, "no-such-connector", &connectorv1.Command{CommandId: "x", Type: "PROBE_METRICS"})
+	if err == nil {
+		t.Fatal("dispatch to offline connector should fail")
 	}
 }
 

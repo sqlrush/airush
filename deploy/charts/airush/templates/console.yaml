@@ -72,6 +72,10 @@ spec:
             - name: AIRUSH_CONSOLE_CA_KEY
               valueFrom:
                 secretKeyRef: { name: {{ $pkiSecret }}, key: ca.key }
+            - name: AIRUSH_CONSOLE_GATEWAY_URL
+              value: {{ printf "http://%s-gateway:8081" .Release.Name | quote }}
+            - name: AIRUSH_CONSOLE_METRICS_INTERVAL
+              value: {{ .Values.console.metricsInterval | default "60s" | quote }}
             - name: AIRUSH_COMMON_LOG_LEVEL
               value: {{ .Values.common.logLevel | quote }}
             - name: AIRUSH_COMMON_OTLP_ENDPOINT

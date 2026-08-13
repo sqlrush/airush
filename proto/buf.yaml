@@ -13,3 +13,10 @@ lint:
 breaking:
   use:
     - WIRE_JSON
+  ignore_only:
+    # spec-1.2 §2.2 把 ClientFrame 字段 4 显式预留给 DataUpload（"预留给 spec-1.3/1.5 实装"）；
+    # spec-1.3 D4 兑现该预留、在字段 4 定义 data_upload。填充自留槽位是线兼容演进（字段号
+    # 从未被占用），但 buf 的 RESERVED_MESSAGE_NO_DELETE 把"移除预留"一律判为破坏。仅对本
+    # 文件豁免该规则；其余 reserved 删除与所有其他兼容性规则仍全量守护。
+    RESERVED_MESSAGE_NO_DELETE:
+      - connector/v1/session.proto

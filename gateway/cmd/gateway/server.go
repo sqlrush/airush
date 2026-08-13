@@ -16,8 +16,12 @@ import (
 	"github.com/sqlrush/airush/gateway/internal/accept"
 	"github.com/sqlrush/airush/gateway/internal/consoleclient"
 	"github.com/sqlrush/airush/libs/apierror"
+	"github.com/sqlrush/airush/libs/metrics"
 	"github.com/sqlrush/airush/libs/obs"
 )
+
+// metricsSinkCapacity 是 gateway 侧 Connector 上报环形 Sink 的保留批数（Stage 1）。
+const metricsSinkCapacity = 256
 
 // runServer 组装观测/错误中间件链并带优雅退出运行（k8s preStop 契约的雏形）。
 func runServer(cfg appConfig, provider *obs.Provider, version string) error {
@@ -28,25 +32,29 @@ func runServer(cfg appConfig, provider *obs.Provider, version string) error {
 	})
 	mux.Handle("/demo", apierror.Middleware(demoHandler))
 
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	errCh := make(chan error, 1)
+
+	// spec-1.2：接入面（注册/会话 gRPC）与 HTTP 观测面同进程；ConsoleURL 空则跳过
+	// （保留纯观测演示形态供 Stage 0 验收链路复用）。先装配接入面，才能把内部
+	// 采集 API（spec-1.3 D4）挂到同一 mux（HTTP 服务尚未 ListenAndServe，改路由安全）。
+	accepter, err := startAccept(ctx, cfg, provider, errCh)
+	if err != nil {
+		return err
+	}
+	if accepter != nil {
+		mux.Handle("/internal/v1/collect", accept.CollectHandler(accepter, cfg.SvcToken))
+	}
+
 	srv := &http.Server{
 		Addr:              cfg.Listen,
 		Handler:           obs.HTTPMiddleware(component, mux),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-
-	errCh := make(chan error, 1)
 	go func() { errCh <- srv.ListenAndServe() }()
 	provider.Logger.Info("gateway serving", "listen", cfg.Listen)
-
-	// spec-1.2：接入面（注册/会话 gRPC）与 HTTP 观测面同进程；ConsoleURL 空则跳过
-	// （保留纯观测演示形态供 Stage 0 验收链路复用）。
-	accepter, err := startAccept(ctx, cfg, provider, errCh)
-	if err != nil {
-		return err
-	}
 
 	select {
 	case err := <-errCh:
@@ -74,11 +82,14 @@ func startAccept(_ context.Context, cfg appConfig, provider *obs.Provider, errCh
 		return nil, nil
 	}
 	console := consoleclient.New(cfg.ConsoleURL, cfg.SvcToken)
+	// Connector DataUpload 落点（spec-1.3 §2.4）：Stage 1 内存 buffer 验证链路，
+	// spec-1.5 换 TimescaleDB Sink。收讫计数经 BufferSink.Total 可观测。
+	sink := metrics.NewBufferSink(metricsSinkCapacity)
 	servers, err := accept.Build(console, accept.TLSMaterial{
 		ServerCertPEM: []byte(cfg.TLSCertPEM),
 		ServerKeyPEM:  []byte(cfg.TLSKeyPEM),
 		ClientCAPEM:   []byte(cfg.ClientCAPEM),
-	}, accept.DefaultSessionConfig(), accept.Deps{Logger: provider.Logger})
+	}, accept.DefaultSessionConfig(), accept.Deps{Logger: provider.Logger, Sink: sink})
 	if err != nil {
 		return nil, fmt.Errorf("build accept servers: %w", err)
 	}

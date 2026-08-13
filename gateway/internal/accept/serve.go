@@ -1,6 +1,7 @@
 package accept
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
@@ -12,6 +13,7 @@ import (
 	"google.golang.org/grpc/credentials"
 
 	"github.com/sqlrush/airush/gateway/internal/consoleclient"
+	"github.com/sqlrush/airush/libs/metrics"
 	connectorv1 "github.com/sqlrush/airush/proto/gen/go/connector/v1"
 )
 
@@ -52,7 +54,7 @@ func Build(console *consoleclient.Client, tlsMat TLSMaterial, cfg SessionConfig,
 	enrollGRPC := grpc.NewServer(grpc.Creds(credentials.NewTLS(enrollTLS)))
 	connectorv1.RegisterEnrollmentServiceServer(enrollGRPC, NewEnrollmentServer(console, deps.Logger))
 
-	sessionSvc := NewSessionServer(console, cfg, deps.Logger)
+	sessionSvc := NewSessionServer(console, cfg, deps.Sink, deps.Logger)
 	sessionGRPC := grpc.NewServer(grpc.Creds(credentials.NewTLS(sessionTLS)))
 	connectorv1.RegisterSessionServiceServer(sessionGRPC, sessionSvc)
 
@@ -62,6 +64,7 @@ func Build(console *consoleclient.Client, tlsMat TLSMaterial, cfg SessionConfig,
 // Deps 是接入面的横切依赖。
 type Deps struct {
 	Logger *slog.Logger
+	Sink   metrics.Sink // Connector DataUpload 落点（spec-1.3 §2.4）；nil 时丢弃
 }
 
 // Serve 在给定监听器上并发启动两个 server（阻塞直到出错）。
@@ -77,4 +80,9 @@ func (s *Servers) GracefulStop(reason string) {
 	s.sessionSvc.DrainAll(reason)
 	s.enrollGRPC.GracefulStop()
 	s.sessionGRPC.GracefulStop()
+}
+
+// Dispatch 向连接器下发指令并等终态（spec-1.3 平台驱动采集，经内部 collect API 调用）。
+func (s *Servers) Dispatch(ctx context.Context, connectorID string, cmd *connectorv1.Command) error {
+	return s.sessionSvc.Dispatch(ctx, connectorID, cmd)
 }
