@@ -7,6 +7,13 @@ KCTL=(kubectl --context kind-airush-dev)
 
 fail() { echo "FAIL: $1"; exit 1; }
 
+# console_logs 取最近日志到变量再匹配。直接 `kubectl logs | grep -q` 在 pipefail 下
+# 会误判：grep 命中即退出关闭管道，kubectl 收 SIGPIPE(141)，管道整体判失败——
+# 日志越多越容易触发，正是采集正常时的形态。
+console_logs() {
+  "${KCTL[@]}" logs deploy/airush-console --since="$1" 2>/dev/null || true
+}
+
 echo "== pods ready =="
 "${KCTL[@]}" wait --for=condition=Ready pod --all --timeout=120s >/dev/null || fail "存在未就绪 pod"
 "${KCTL[@]}" get pods --no-headers
@@ -80,7 +87,7 @@ kill $PF 2>/dev/null
 # 采集器周期采集（dev interval=15s + 抖动）→ console 日志出现该数据源采集心跳
 ok=""
 for i in $(seq 1 12); do
-  if "${KCTL[@]}" logs deploy/airush-console --since=120s 2>/dev/null | grep -q "metrics collected.*$cdsid"; then ok="1"; break; fi
+  if printf '%s' "$(console_logs 120s)" | grep -q "metrics collected.*$cdsid"; then ok="1"; break; fi
   sleep 5
 done
 [ -n "$ok" ] || fail "采集器未对 dev-verify-collect 采到批（console 日志无 metrics collected）"
@@ -91,8 +98,9 @@ echo "== 快照采集（spec-1.4：慢日志/表结构/配置三类） =="
 for kind in slowlog schema config; do
   ok=""
   for i in $(seq 1 40); do
-    if "${KCTL[@]}" logs deploy/airush-console --since=600s 2>/dev/null \
-      | grep -q "metrics collected.*$cdsid.*kind=$kind"; then ok="1"; break; fi
+    # console 输出结构化 JSON 日志，故匹配 "kind":"<kind>"（兼容 logfmt 的 kind=）。
+    if printf '%s' "$(console_logs 600s)" \
+      | grep -Eq "metrics collected.*$cdsid.*(\"kind\":\"$kind\"|kind=$kind)"; then ok="1"; break; fi
     sleep 10
   done
   [ -n "$ok" ] || fail "快照采集未见 kind=$kind 心跳（console 日志）"
