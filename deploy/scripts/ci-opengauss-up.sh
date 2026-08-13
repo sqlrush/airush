@@ -33,6 +33,13 @@ until docker exec "$NAME" su - omm -c \
 done
 echo "==> openGauss ready after ${SECONDS}s"
 
+# 慢查询源 dbe_perf 需 monadmin。不授的话采集会降级为 CapabilityMissing——那条路径
+# 有单测覆盖，而 CI 要验的是**真正跑 dbe_perf SQL** 的那条，故这里授权，对应客户
+# 实际会给监控账号的权限形态。
+docker exec "$NAME" su - omm -c \
+  "/usr/local/opengauss/bin/gsql -p 5432 -d postgres -c 'ALTER USER gaussdb monadmin;'" >/dev/null
+echo "==> granted monadmin to gaussdb (dbe_perf readable)"
+
 # 把接入参数交给后续步骤；集成用例未见这些变量即跳过 openGauss 分支。
 if [ -n "${GITHUB_ENV:-}" ]; then
   {
