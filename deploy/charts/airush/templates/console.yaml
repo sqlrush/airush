@@ -76,6 +76,10 @@ spec:
               value: {{ printf "http://%s-gateway:8081" .Release.Name | quote }}
             - name: AIRUSH_CONSOLE_METRICS_INTERVAL
               value: {{ .Values.console.metricsInterval | default "60s" | quote }}
+            - name: AIRUSH_CONSOLE_SLOWLOG_INTERVAL
+              value: {{ .Values.console.slowlogInterval | default "300s" | quote }}
+            - name: AIRUSH_CONSOLE_META_INTERVAL
+              value: {{ .Values.console.metaInterval | default "3600s" | quote }}
             - name: AIRUSH_COMMON_LOG_LEVEL
               value: {{ .Values.common.logLevel | quote }}
             - name: AIRUSH_COMMON_OTLP_ENDPOINT

@@ -35,24 +35,37 @@ func DefaultSessionConfig() SessionConfig {
 	}
 }
 
+// dataUploadKindMetrics 是指标类上报的 kind（与连接器侧同一常量口径）。
+const dataUploadKindMetrics = "metrics"
+
 // SessionServer 实现 mTLS 会话 RPC。
 type SessionServer struct {
 	connectorv1.UnimplementedSessionServiceServer
 	console  *consoleclient.Client
 	registry *registry
 	cfg      SessionConfig
-	sink     metrics.Sink // DataUpload 落点（spec-1.3 §2.4：gateway 转 Sink）
-	logger   *slog.Logger
-	nowFn    func() time.Time
+	// DataUpload 落点（spec-1.3 §2.4：gateway 转 Sink）。指标与快照分列两个接口，
+	// 载荷与落库形态不同，spec-1.5 可分别实现。
+	sink         metrics.Sink
+	snapshotSink metrics.SnapshotSink
+	logger       *slog.Logger
+	nowFn        func() time.Time
 }
 
 // NewSessionServer 构造。sink 为 nil 时用丢弃 Sink（无 Connector 采集消费者的形态）。
-func NewSessionServer(console *consoleclient.Client, cfg SessionConfig, sink metrics.Sink, logger *slog.Logger) *SessionServer {
+func NewSessionServer(
+	console *consoleclient.Client, cfg SessionConfig,
+	sink metrics.Sink, snapshotSink metrics.SnapshotSink, logger *slog.Logger,
+) *SessionServer {
 	if sink == nil {
 		sink = discardSink{}
 	}
+	if snapshotSink == nil {
+		snapshotSink = discardSink{}
+	}
 	return &SessionServer{
-		console: console, registry: newRegistry(), cfg: cfg, sink: sink, logger: logger,
+		console: console, registry: newRegistry(), cfg: cfg,
+		sink: sink, snapshotSink: snapshotSink, logger: logger,
 		nowFn: time.Now,
 	}
 }
@@ -61,6 +74,8 @@ func NewSessionServer(console *consoleclient.Client, cfg SessionConfig, sink met
 type discardSink struct{}
 
 func (discardSink) Publish(context.Context, metrics.Batch) error { return nil }
+
+func (discardSink) PublishSnapshot(context.Context, metrics.Snapshot) error { return nil }
 
 // DrainAll 供优雅下线调用（广播 Drain）。
 func (s *SessionServer) DrainAll(reason string) { s.registry.drainAll(reason) }
@@ -209,19 +224,60 @@ func (s *SessionServer) onClientFrame(ctx context.Context, stream connectorv1.Se
 	}
 }
 
-// handleDataUpload 落库 DataUpload 携带的 batch 到 Sink，并关联回触发方（spec-1.3 T11）。
-// AD-3：只接受结构化 batch；payload 非法/落 Sink 失败都回错误码给触发方（fail-closed）。
+// handleDataUpload 按 kind 把上报落到对应 Sink，并关联回触发方（spec-1.3 T11 /
+// spec-1.4 T12）。AD-3：只接受结构化载荷；未知 kind、payload 非法、落 Sink 失败
+// 都回错误码给触发方（fail-closed，绝不静默吞掉）。
 func (s *SessionServer) handleDataUpload(ctx context.Context, sess *session, du *connectorv1.DataUpload) {
+	kind := du.GetKind()
+	if kind == metrics.SnapshotKindSlowlog || kind == metrics.SnapshotKindSchema ||
+		kind == metrics.SnapshotKindConfig {
+		s.handleSnapshotUpload(ctx, sess, du, kind)
+		return
+	}
+	if kind != dataUploadKindMetrics {
+		s.logger.Warn("data upload with unsupported kind",
+			"connector_id", sess.connectorID, "kind", kind)
+		sess.signalCommand(du.GetCommandId(), errors.New("AR_COLLECT_UNSUPPORTED_KIND"))
+		return
+	}
+
 	var batch metrics.Batch
 	if err := json.Unmarshal(du.GetPayload(), &batch); err != nil {
 		s.logger.Warn("data upload decode failed",
-			"connector_id", sess.connectorID, "kind", du.GetKind(), "err", err)
-		sess.signalCommand(du.GetCommandId(), fmt.Errorf("AR_METRICS_COLLECT_FAILED: decode batch"))
+			"connector_id", sess.connectorID, "kind", kind, "err", err)
+		sess.signalCommand(du.GetCommandId(), errors.New("AR_METRICS_COLLECT_FAILED: decode batch"))
 		return
 	}
 	if err := s.sink.Publish(ctx, batch); err != nil {
 		s.logger.Warn("data upload sink publish failed", "connector_id", sess.connectorID, "err", err)
-		sess.signalCommand(du.GetCommandId(), fmt.Errorf("AR_METRICS_COLLECT_FAILED: sink publish"))
+		sess.signalCommand(du.GetCommandId(), errors.New("AR_METRICS_COLLECT_FAILED: sink publish"))
+		return
+	}
+	sess.signalCommand(du.GetCommandId(), nil)
+}
+
+// handleSnapshotUpload 落快照到 SnapshotSink（spec-1.4）。
+func (s *SessionServer) handleSnapshotUpload(
+	ctx context.Context, sess *session, du *connectorv1.DataUpload, kind string,
+) {
+	var snapshot metrics.Snapshot
+	if err := json.Unmarshal(du.GetPayload(), &snapshot); err != nil {
+		s.logger.Warn("snapshot upload decode failed",
+			"connector_id", sess.connectorID, "kind", kind, "err", err)
+		sess.signalCommand(du.GetCommandId(), errors.New("AR_SNAPSHOT_COLLECT_FAILED: decode snapshot"))
+		return
+	}
+	if snapshot.Kind != kind {
+		// 帧头 kind 与载荷自述 kind 不一致：拒收，避免错落 Sink。
+		s.logger.Warn("snapshot kind mismatch",
+			"connector_id", sess.connectorID, "frame_kind", kind, "payload_kind", snapshot.Kind)
+		sess.signalCommand(du.GetCommandId(), errors.New("AR_SNAPSHOT_COLLECT_FAILED: kind mismatch"))
+		return
+	}
+	if err := s.snapshotSink.PublishSnapshot(ctx, snapshot); err != nil {
+		s.logger.Warn("snapshot sink publish failed",
+			"connector_id", sess.connectorID, "kind", kind, "err", err)
+		sess.signalCommand(du.GetCommandId(), errors.New("AR_SNAPSHOT_COLLECT_FAILED: sink publish"))
 		return
 	}
 	sess.signalCommand(du.GetCommandId(), nil)

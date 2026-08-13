@@ -7,6 +7,13 @@ KCTL=(kubectl --context kind-airush-dev)
 
 fail() { echo "FAIL: $1"; exit 1; }
 
+# console_logs 取最近日志到变量再匹配。直接 `kubectl logs | grep -q` 在 pipefail 下
+# 会误判：grep 命中即退出关闭管道，kubectl 收 SIGPIPE(141)，管道整体判失败——
+# 日志越多越容易触发，正是采集正常时的形态。
+console_logs() {
+  "${KCTL[@]}" logs deploy/airush-console --since="$1" 2>/dev/null || true
+}
+
 echo "== pods ready =="
 "${KCTL[@]}" wait --for=condition=Ready pod --all --timeout=120s >/dev/null || fail "存在未就绪 pod"
 "${KCTL[@]}" get pods --no-headers
@@ -60,6 +67,10 @@ echo "$tc" | grep -q 'dev-verify-secret' && fail "test-connection 响应泄漏�
 echo "  console API OK（201/幂等 409、列表可见、密文无明文、test-connection 错误码+无泄漏）"
 
 echo "== 指标采集（spec-1.3：Direct 通道采一批） =="
+# 开发环境启用 pg_stat_statements，让慢查询快照（spec-1.4）走成功路径而非能力降级。
+# 仅 dev：控制面库在生产不是被采数据源，故不进 migration。
+"${KCTL[@]}" exec airush-pg-0 -- psql -U postgres -d airush -c \
+  "CREATE EXTENSION IF NOT EXISTS pg_stat_statements" >/dev/null 2>&1 || true
 "${KCTL[@]}" port-forward svc/airush-console 18080:8080 >/dev/null 2>&1 &
 PF=$!
 sleep 2
@@ -76,11 +87,25 @@ kill $PF 2>/dev/null
 # 采集器周期采集（dev interval=15s + 抖动）→ console 日志出现该数据源采集心跳
 ok=""
 for i in $(seq 1 12); do
-  if "${KCTL[@]}" logs deploy/airush-console --since=120s 2>/dev/null | grep -q "metrics collected.*$cdsid"; then ok="1"; break; fi
+  if printf '%s' "$(console_logs 120s)" | grep -q "metrics collected.*$cdsid"; then ok="1"; break; fi
   sleep 5
 done
 [ -n "$ok" ] || fail "采集器未对 dev-verify-collect 采到批（console 日志无 metrics collected）"
 echo "  指标采集 OK（Direct 通道对内置 PG 周期采集心跳可见）"
+
+echo "== 快照采集（spec-1.4：慢日志/表结构/配置三类） =="
+# dev values 把快照间隔压到 60s/300s，配合抖动最长约 5 分钟内各出一次心跳。
+for kind in slowlog schema config; do
+  ok=""
+  for i in $(seq 1 40); do
+    # console 输出结构化 JSON 日志，故匹配 "kind":"<kind>"（兼容 logfmt 的 kind=）。
+    if printf '%s' "$(console_logs 600s)" \
+      | grep -Eq "metrics collected.*$cdsid.*(\"kind\":\"$kind\"|kind=$kind)"; then ok="1"; break; fi
+    sleep 10
+  done
+  [ -n "$ok" ] || fail "快照采集未见 kind=$kind 心跳（console 日志）"
+  echo "  快照 $kind OK"
+done
 
 echo "== connector 接入 e2e（spec-1.2：enroll → session → online） =="
 # 幂等前置（spec-0.12 §3 从零语义）：清理上次遗留的 dev-verify-conn

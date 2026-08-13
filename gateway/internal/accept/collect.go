@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sqlrush/airush/libs/metrics"
 	connectorv1 "github.com/sqlrush/airush/proto/gen/go/connector/v1"
 )
 
@@ -22,6 +23,17 @@ type collectRequest struct {
 	ConnectorID  string `json:"connector_id"`
 	DatasourceID string `json:"datasource_id"`
 	EngineFamily string `json:"engine_family"`
+	// Kind 是采集类型；缺省 "metrics"，对 spec-1.3 时期的调用方向后兼容。
+	Kind string `json:"kind"`
+}
+
+// 采集类型 → 下发指令类型。每个 kind 一个独立指令类型即白名单（AD-9），未列入的
+// kind 在此被拒，指令 payload 里没有 SQL。
+var collectCommandForKind = map[string]string{
+	"metrics":                   "PROBE_METRICS",
+	metrics.SnapshotKindSlowlog: "PROBE_SLOWLOG",
+	metrics.SnapshotKindSchema:  "PROBE_SCHEMA",
+	metrics.SnapshotKindConfig:  "PROBE_CONFIG",
 }
 
 // CollectHandler 是 gateway 内部采集 API（spec-1.3 D4）：collector 经它触发向连接器
@@ -41,12 +53,22 @@ func CollectHandler(servers *Servers, svcToken string) http.Handler {
 			return
 		}
 
+		kind := req.Kind
+		if kind == "" {
+			kind = "metrics"
+		}
+		commandType, ok := collectCommandForKind[kind]
+		if !ok {
+			writeCollectErr(w, http.StatusBadRequest, "AR_COLLECT_UNSUPPORTED_KIND")
+			return
+		}
+
 		payload, _ := json.Marshal(map[string]string{
 			"datasource_id": req.DatasourceID, "engine_family": req.EngineFamily,
 		})
 		cmd := &connectorv1.Command{
 			CommandId: newCommandID(),
-			Type:      "PROBE_METRICS",
+			Type:      commandType,
 			Payload:   payload,
 		}
 
@@ -59,15 +81,16 @@ func CollectHandler(servers *Servers, svcToken string) http.Handler {
 		case errors.Is(err, ErrConnectorOffline):
 			writeCollectErr(w, http.StatusServiceUnavailable, "AR_CONNECTOR_OFFLINE")
 		case errors.Is(err, context.DeadlineExceeded), errors.Is(err, context.Canceled):
-			writeCollectErr(w, http.StatusGatewayTimeout, "AR_METRICS_COLLECT_FAILED")
+			writeCollectErr(w, http.StatusGatewayTimeout, timeoutCodeFor(kind))
 		default:
-			writeCollectErr(w, http.StatusBadGateway, dispatchErrCode(err))
+			writeCollectErr(w, http.StatusBadGateway, dispatchErrCode(err, kind))
 		}
 	})
 }
 
-// dispatchErrCode 从连接器回传的错误信号里提取注册码（errors.New(code)），否则归 COLLECT_FAILED。
-func dispatchErrCode(err error) string {
+// dispatchErrCode 从连接器回传的错误信号里提取注册码（errors.New(code)），
+// 提不出就按采集类型归到对应的整批失败码。
+func dispatchErrCode(err error, kind string) string {
 	code := err.Error()
 	if strings.HasPrefix(code, "AR_") {
 		if i := strings.IndexByte(code, ':'); i > 0 {
@@ -75,7 +98,15 @@ func dispatchErrCode(err error) string {
 		}
 		return code
 	}
-	return "AR_METRICS_COLLECT_FAILED"
+	return timeoutCodeFor(kind)
+}
+
+// timeoutCodeFor 返回该采集类型的整批失败码（指标与快照分列，便于告警区分）。
+func timeoutCodeFor(kind string) string {
+	if kind == "metrics" {
+		return "AR_METRICS_COLLECT_FAILED"
+	}
+	return "AR_SNAPSHOT_COLLECT_FAILED"
 }
 
 func writeCollectErr(w http.ResponseWriter, status int, code string) {

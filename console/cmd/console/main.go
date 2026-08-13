@@ -36,6 +36,9 @@ type appConfig struct {
 	// spec-1.3：指标采集调度。GatewayURL 为空则只跑 Direct 通道（Connector 数据源跳过）。
 	GatewayURL      string        `env:"GATEWAY_URL"      default:""`
 	MetricsInterval time.Duration `env:"METRICS_INTERVAL" default:"60s"`
+	// 快照采集间隔（spec-1.4）：慢查询统计与元数据各自节奏，下限护栏在 collector.Config。
+	SlowlogInterval time.Duration `env:"SLOWLOG_INTERVAL" default:"300s"`
+	MetaInterval    time.Duration `env:"META_INTERVAL"    default:"3600s"`
 }
 
 // version 由构建期 -ldflags 注入（spec-0.10/0.11 定版链路）。

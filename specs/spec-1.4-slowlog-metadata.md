@@ -264,3 +264,27 @@ B 元数据查询较重（逐表 size），60s 对大库是无谓负载；C 失�
 - spec-1.10：巡检报告读 config/schema 快照；spec-1.11：慢查询分析消费 SlowQueryEntry；
 - spec-1.16：openGauss 真机双验（dbe_perf 源候选）在 Stage 1 验收环境执行；
 - Stage 2：schema 全量分页、多库目标映射、运营可配目录沿 spec-1.3/1.4 既有扩展点演进。
+
+## §11 实施 changelog（frozen 后追加，不改上文）
+
+- **2026-08-13 实施完成**：
+  - **真机校准（og5，openGauss-lite 5.0.3）**：§2.2 的 dbe_perf 源按文档写的列名
+    实测有两处不存在——**无 `avg_elapse_time`**（均值改由 `total_elapse_time /
+    NULLIF(n_calls,0)` 算出）、**无库名列**（`database` 字段留空，不编造）。该视图的
+    `query` 列实测已规范化（字面量为 `?`），§3 的 AD-3 前提在真机成立。
+  - **同批验出两处本可漏网的 bug**：①表结构查询的 `ORDER BY size_bytes` 落在
+    `::text` 输出别名上，PG 按字典序排（实测 99311616 > 974848），改
+    `ORDER BY t.size_bytes` 走数值序；②**spec-1.3 遗留**：复制延迟指标在 openGauss
+    直接报错（该发行版承 PG 9.2 血统，只有 `pg_last_xlog_receive_location` 一族），
+    spec-1.3 DoD 写的"openGauss 双验"实际从未做成。`CatalogEntry` 增 `AltSQL`
+    方言回退（主 SQL 执行报错时改用），补齐该验证。
+  - §2.3 索引列改从 `pg_get_indexdef` 的 DDL 解析（深度感知的逗号切分），而非
+    展开 `indkey`——openGauss 缺 `LATERAL`/`WITH ORDINALITY`。
+  - Direct/Connector 两侧 `RowQuerier` 均把列值统一字符串化：快照跨方言取回的是
+    异构标量，字符串是唯一无损且无需逐列类型表的中间形态。
+  - dev-verify 修掉一处隐蔽 flake：`kubectl logs | grep -q` 在 `pipefail` 下因
+    SIGPIPE 误判失败，**日志越多越容易触发**（即采集越正常越容易挂）。
+  - 覆盖率合并口径达标：connector 87.3%、console 82.2%、gateway 81.5%、
+    libs-metrics 84.7%。T1-T13 全过；dev-verify ALL PASS（三类快照心跳可见）。
+  - openGauss 集成用例以 `AIRUSH_OPENGAUSS_*` 环境变量接外部实例，未设即跳过——
+    需要 CI 不具备的外部依赖，本地/验收环境按 spec-1.16 执行。

@@ -10,11 +10,12 @@ import (
 	"time"
 )
 
-// ConnectorCollector 触发 Connector 通道的一次采集：经 gateway 内部 collect API 下发
-// PROBE_METRICS 到目标连接器；连接器采集后回 DataUpload，由 gateway 落其 Sink
-// （spec-1.3 §2.4）。本接口只回触发终态（成功/失败），不承载 batch。Direct 通道不经此路径。
+// ConnectorCollector 触发 Connector 通道的一次采集：经 gateway 内部 collect API 按 kind
+// 下发对应采集指令到目标连接器；连接器采集后回 DataUpload，由 gateway 落其 Sink
+// （spec-1.3 §2.4、spec-1.4）。本接口只回触发终态（成功/失败），不承载数据。
+// Direct 通道不经此路径。
 type ConnectorCollector interface {
-	TriggerCollect(ctx context.Context, connectorID, datasourceID, engineFamily string) error
+	TriggerCollect(ctx context.Context, connectorID, datasourceID, engineFamily, kind string) error
 }
 
 // GatewayClient 调用 gateway 内部采集 API（svc token 认证，与 console↔gateway 同信任域）。
@@ -40,12 +41,14 @@ type collectRequest struct {
 	ConnectorID  string `json:"connector_id"`
 	DatasourceID string `json:"datasource_id"`
 	EngineFamily string `json:"engine_family"`
+	Kind         string `json:"kind"`
 }
 
 // TriggerCollect 触发一次 Connector 采集（数据由 gateway 落其 Sink，本调用只判成败）。
-func (c *GatewayClient) TriggerCollect(ctx context.Context, connectorID, datasourceID, engineFamily string) error {
+func (c *GatewayClient) TriggerCollect(ctx context.Context, connectorID, datasourceID, engineFamily, kind string) error {
 	body, err := json.Marshal(collectRequest{
-		ConnectorID: connectorID, DatasourceID: datasourceID, EngineFamily: engineFamily,
+		ConnectorID: connectorID, DatasourceID: datasourceID,
+		EngineFamily: engineFamily, Kind: kind,
 	})
 	if err != nil {
 		return fmt.Errorf("collector: marshal collect request: %w", err)

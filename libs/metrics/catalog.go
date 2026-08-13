@@ -6,6 +6,10 @@ type CatalogEntry struct {
 	Unit string
 	// SQL 返回单行单列，列别名 "value"（数值）。只读聚合系统视图，无行级数据（AD-3）。
 	SQL string
+	// AltSQL 是同引擎族内的方言回退：主 SQL **执行报错**（如函数不存在）时改用它。
+	// openGauss 承 PG 9.2 血统，WAL 位置函数仍是 pg_last_xlog_* 命名，与 PG 10+ 的
+	// pg_last_wal_* 不同族名。空串表示无回退。
+	AltSQL string
 	// Nullable 标注该指标在某些角色/版本可能无值（如复制延迟在主库为空）——
 	// 无值时该指标缺采（partial），不视为错误。
 	Nullable bool
@@ -56,8 +60,13 @@ var PostgresCatalog = []CatalogEntry{
 	{
 		Name: "pg.replication.lag_bytes", Unit: UnitBytes, Nullable: true,
 		// 主库无上游 → 无值（partial，非错误）；备库上报与上游的 WAL 差。
+		// 最低兼容 PG 10（pg_last_wal_* 命名）；openGauss 走 AltSQL 的 9.2 系命名
+		// （实测 openGauss-lite 5.0.3 只有 pg_last_xlog_receive_location 一族）。
 		SQL: `SELECT CASE WHEN pg_is_in_recovery()
 			THEN pg_wal_lsn_diff(pg_last_wal_receive_lsn(), pg_last_wal_replay_lsn())::float8
+			ELSE NULL END AS value`,
+		AltSQL: `SELECT CASE WHEN pg_is_in_recovery()
+			THEN pg_xlog_location_diff(pg_last_xlog_receive_location(), pg_last_xlog_replay_location())::float8
 			ELSE NULL END AS value`,
 	},
 }

@@ -84,10 +84,40 @@ func TestProbeCollectAllFailIsError(t *testing.T) {
 	failing := map[string]bool{}
 	for _, e := range PostgresCatalog {
 		failing[e.SQL] = true
+		if e.AltSQL != "" {
+			failing[e.AltSQL] = true // 方言回退也失败，才算整批失败
+		}
 	}
 	q := &fakeQuerier{failing: failing}
 	if _, err := (Probe{DatasourceID: "ds", EngineFamily: "postgres"}).Collect(context.Background(), q); err == nil {
 		t.Fatal("all-fail collect should error")
+	}
+}
+
+// TestProbeAltSQLFallback：主 SQL 报错（函数不存在的方言差异）时改用 AltSQL，
+// 该指标照采不缺（openGauss 的 pg_last_xlog_* 一族）。
+func TestProbeAltSQLFallback(t *testing.T) {
+	t.Parallel()
+	var withAlt CatalogEntry
+	for _, e := range PostgresCatalog {
+		if e.AltSQL != "" {
+			withAlt = e
+			break
+		}
+	}
+	if withAlt.Name == "" {
+		t.Skip("catalog has no dialect fallback entry")
+	}
+
+	q := &fakeQuerier{failing: map[string]bool{withAlt.SQL: true}}
+	batch, err := Probe{DatasourceID: "ds", EngineFamily: "postgres"}.Collect(context.Background(), q)
+	if err != nil {
+		t.Fatalf("collect: %v", err)
+	}
+	for _, name := range batch.Missing {
+		if name == withAlt.Name {
+			t.Fatalf("%s should have been collected through AltSQL", withAlt.Name)
+		}
 	}
 }
 

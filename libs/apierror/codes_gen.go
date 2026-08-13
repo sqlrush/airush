@@ -34,6 +34,8 @@ const (
 	CodeDatasourceConnectFailed Code = "AR_DATASOURCE_CONNECT_FAILED"
 	CodeDatasourceTestTimeout Code = "AR_DATASOURCE_TEST_TIMEOUT"
 	CodeMetricsCollectFailed Code = "AR_METRICS_COLLECT_FAILED"
+	CodeSnapshotCollectFailed Code = "AR_SNAPSHOT_COLLECT_FAILED"
+	CodeCollectUnsupportedKind Code = "AR_COLLECT_UNSUPPORTED_KIND"
 )
 
 var codeMeta = map[Code]Meta{
@@ -67,4 +69,6 @@ var codeMeta = map[Code]Meta{
 	CodeDatasourceConnectFailed: {Level: "E5", HTTP: 502, Message: "数据源连接失败", Deprecated: false},
 	CodeDatasourceTestTimeout: {Level: "E5", HTTP: 504, Message: "数据源连接测试超时", Deprecated: false},
 	CodeMetricsCollectFailed: {Level: "E5", HTTP: 502, Message: "指标采集失败", Deprecated: false},
+	CodeSnapshotCollectFailed: {Level: "E5", HTTP: 502, Message: "快照采集失败", Deprecated: false},
+	CodeCollectUnsupportedKind: {Level: "E4", HTTP: 400, Message: "不支持的采集类型", Deprecated: false},
 }

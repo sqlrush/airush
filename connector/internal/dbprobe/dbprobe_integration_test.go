@@ -70,3 +70,62 @@ func TestDBProbeUnsupportedPassthrough(t *testing.T) {
 		t.Fatalf("PING should pass through (nil), got %+v", frame)
 	}
 }
+
+// TestDBProbeSnapshotCommands spec-1.4：三类快照指令对真 PG 各产一帧 DataUpload，
+// kind 与 command_id 正确回填；未装 pg_stat_statements 的 PG 上慢查询走能力降级
+// （仍是成功路径的 DataUpload，不是 CommandResult 错误）。
+func TestDBProbeSnapshotCommands(t *testing.T) {
+	ctx := context.Background()
+	pg, err := testkit.StartPostgres(ctx)
+	if err != nil {
+		t.Fatalf("postgres: %v", err)
+	}
+	t.Cleanup(func() { _ = pg.Terminate(context.Background()) })
+	h, err := New(ctx, pg.ConnString)
+	if err != nil {
+		t.Fatalf("new probe: %v", err)
+	}
+	t.Cleanup(h.Close)
+
+	cases := []struct {
+		command string
+		kind    string
+	}{
+		{CommandProbeSlowlog, metrics.SnapshotKindSlowlog},
+		{CommandProbeSchema, metrics.SnapshotKindSchema},
+		{CommandProbeConfig, metrics.SnapshotKindConfig},
+	}
+	for _, tc := range cases {
+		frame := h.Handle(ctx, &connectorv1.Command{
+			CommandId: "cmd-" + tc.kind,
+			Type:      tc.command,
+			Payload:   []byte(`{"datasource_id":"ds1","engine_family":"postgres"}`),
+		})
+		upload := frame.GetDataUpload()
+		if upload == nil {
+			t.Fatalf("%s: expected a DataUpload frame, got %+v", tc.command, frame)
+		}
+		if upload.GetKind() != tc.kind || upload.GetCommandId() != "cmd-"+tc.kind {
+			t.Fatalf("%s: frame header = kind %q id %q", tc.command, upload.GetKind(), upload.GetCommandId())
+		}
+
+		var snapshot metrics.Snapshot
+		if err := json.Unmarshal(upload.GetPayload(), &snapshot); err != nil {
+			t.Fatalf("%s: decode snapshot: %v", tc.command, err)
+		}
+		if snapshot.Kind != tc.kind || snapshot.DatasourceID != "ds1" {
+			t.Fatalf("%s: snapshot envelope = %+v", tc.command, snapshot)
+		}
+		switch tc.kind {
+		case metrics.SnapshotKindConfig:
+			if len(snapshot.Configs) < 100 {
+				t.Fatalf("config snapshot has only %d entries", len(snapshot.Configs))
+			}
+		case metrics.SnapshotKindSlowlog:
+			// 测试容器无 pg_stat_statements → 结构化降级，非错误。
+			if !snapshot.CapabilityMissing && len(snapshot.SlowQueries) == 0 {
+				t.Fatalf("slowlog snapshot neither degraded nor populated: %+v", snapshot)
+			}
+		}
+	}
+}

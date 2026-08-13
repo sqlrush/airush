@@ -133,7 +133,7 @@ func newFixture(t *testing.T, cfg accept.SessionConfig) *fixture {
 	sink := metrics.NewBufferSink(64)
 	servers, err := accept.Build(client, accept.TLSMaterial{
 		ServerCertPEM: gwCert, ServerKeyPEM: gwKey, ClientCAPEM: ca.certPEM,
-	}, cfg, accept.Deps{Logger: testLogger(), Sink: sink})
+	}, cfg, accept.Deps{Logger: testLogger(), Sink: sink, SnapshotSink: sink})
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}
@@ -520,4 +520,104 @@ func mustListen(t *testing.T) net.Listener {
 		t.Fatalf("listen: %v", err)
 	}
 	return ln
+}
+
+// TestSnapshotCollectE2E spec-1.4 T12：三类快照各走一遍 collect API → 下发对应指令
+// → 连接器回 DataUpload(kind) → gateway 落 SnapshotSink，端点回 200。
+func TestSnapshotCollectE2E(t *testing.T) {
+	f := newFixture(t, accept.DefaultSessionConfig())
+	cert, key := f.ca.issueClient(t, connID, tenantID)
+	conn, stream := f.dialSession(t, cert, key)
+	defer func() { _ = conn.Close() }()
+	if err := sendHello(stream, connID); err != nil {
+		t.Fatalf("hello: %v", err)
+	}
+	if _, err := stream.Recv(); err != nil {
+		t.Fatalf("ack: %v", err)
+	}
+	waitFor(t, func() bool { return f.console.sawStatus("online") }, "online")
+	go respondSnapshots(stream)
+
+	ts := httptest.NewServer(accept.CollectHandler(f.servers, "collect-tok"))
+	defer ts.Close()
+
+	for _, kind := range []string{
+		metrics.SnapshotKindSlowlog, metrics.SnapshotKindSchema, metrics.SnapshotKindConfig,
+	} {
+		body := `{"connector_id":"` + connID + `","datasource_id":"ds1",` +
+			`"engine_family":"postgres","kind":"` + kind + `"}`
+		req, _ := http.NewRequest(http.MethodPost, ts.URL+"/internal/v1/collect", strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer collect-tok")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("collect %s: %v", kind, err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("collect %s status = %d, want 200", kind, resp.StatusCode)
+		}
+		got, ok := f.sink.LatestSnapshotOf(kind)
+		if !ok || got.DatasourceID != "ds1" {
+			t.Fatalf("snapshot %s not in sink: %+v ok=%v", kind, got, ok)
+		}
+	}
+	if f.sink.SnapshotTotal() != 3 {
+		t.Fatalf("snapshot total = %d, want 3", f.sink.SnapshotTotal())
+	}
+	if f.sink.Total() != 0 {
+		t.Fatal("snapshots must not land in the metrics sink")
+	}
+}
+
+// TestSnapshotCollectUnknownKindRejected spec-1.4 T8（平台侧）：未知 kind 在 collect
+// API 就被拒，绝不下发到连接器。
+func TestSnapshotCollectUnknownKindRejected(t *testing.T) {
+	f := newFixture(t, accept.DefaultSessionConfig())
+	ts := httptest.NewServer(accept.CollectHandler(f.servers, "collect-tok"))
+	defer ts.Close()
+
+	body := `{"connector_id":"` + connID + `","datasource_id":"ds1","kind":"rowdump"}`
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/internal/v1/collect", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer collect-tok")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("collect: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("unknown kind status = %d, want 400", resp.StatusCode)
+	}
+}
+
+// respondSnapshots 模拟连接器：对三类快照指令回对应 kind 的 DataUpload 帧。
+func respondSnapshots(stream connectorv1.SessionService_SessionClient) {
+	kinds := map[string]string{
+		"PROBE_SLOWLOG": metrics.SnapshotKindSlowlog,
+		"PROBE_SCHEMA":  metrics.SnapshotKindSchema,
+		"PROBE_CONFIG":  metrics.SnapshotKindConfig,
+	}
+	for {
+		fr, err := stream.Recv()
+		if err != nil {
+			return
+		}
+		cmd := fr.GetCommand()
+		if cmd == nil {
+			continue
+		}
+		kind, ok := kinds[cmd.GetType()]
+		if !ok {
+			continue
+		}
+		snapshot := metrics.Snapshot{
+			DatasourceID: "ds1", EngineFamily: "postgres", Kind: kind,
+			CatalogVersion: metrics.CatalogVersion, Source: "fake",
+		}
+		payload, _ := json.Marshal(snapshot)
+		_ = stream.Send(&connectorv1.ClientFrame{Frame: &connectorv1.ClientFrame_DataUpload{
+			DataUpload: &connectorv1.DataUpload{
+				CommandId: cmd.GetCommandId(), DatasourceId: "ds1", Kind: kind, Payload: payload,
+			},
+		}})
+	}
 }

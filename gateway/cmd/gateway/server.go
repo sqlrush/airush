@@ -82,14 +82,17 @@ func startAccept(_ context.Context, cfg appConfig, provider *obs.Provider, errCh
 		return nil, nil
 	}
 	console := consoleclient.New(cfg.ConsoleURL, cfg.SvcToken)
-	// Connector DataUpload 落点（spec-1.3 §2.4）：Stage 1 内存 buffer 验证链路，
-	// spec-1.5 换 TimescaleDB Sink。收讫计数经 BufferSink.Total 可观测。
+	// Connector DataUpload 落点（spec-1.3 §2.4 / spec-1.4）：Stage 1 内存 buffer 验证
+	// 链路，spec-1.5 换 TimescaleDB Sink。同一个 BufferSink 兼任指标与快照落点，
+	// 收讫计数经 Total/SnapshotTotal 可观测。
 	sink := metrics.NewBufferSink(metricsSinkCapacity)
 	servers, err := accept.Build(console, accept.TLSMaterial{
 		ServerCertPEM: []byte(cfg.TLSCertPEM),
 		ServerKeyPEM:  []byte(cfg.TLSKeyPEM),
 		ClientCAPEM:   []byte(cfg.ClientCAPEM),
-	}, accept.DefaultSessionConfig(), accept.Deps{Logger: provider.Logger, Sink: sink})
+	}, accept.DefaultSessionConfig(), accept.Deps{
+		Logger: provider.Logger, Sink: sink, SnapshotSink: sink,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("build accept servers: %w", err)
 	}

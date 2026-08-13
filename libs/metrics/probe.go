@@ -45,6 +45,10 @@ func (p Probe) Collect(ctx context.Context, q Querier) (Batch, error) {
 	}
 	for _, entry := range catalog {
 		value, present, err := q.QueryMetricValue(ctx, entry.SQL)
+		if err != nil && entry.AltSQL != "" {
+			// 方言回退：同引擎族的老血统发行版（openGauss 之于 PG 9.2）函数名不同。
+			value, present, err = q.QueryMetricValue(ctx, entry.AltSQL)
+		}
 		if err != nil || !present {
 			// 失败或无值（如复制延迟在主库）→ 缺采，不进 batch，不算整批失败
 			batch.Partial = true

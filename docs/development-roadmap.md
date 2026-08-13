@@ -205,5 +205,5 @@ SPEC（编码前讨论） → TDD 编码 → 集成测试 → Code Review → Re
 | spec-1.2 | **frozen · 实施完成**（T1-T12 全过；dev-verify connector e2e online；覆盖率合并口径达标）| 2026-08-11 起草、approve、实施 |
 | spec-1.17 | **frozen · 实施完成**（T1-T10 全过；directconn 真 PG 集成；覆盖率达标）| 2026-08-11 起草、approve、实施 |
 | spec-1.3 | **frozen · 实施完成**（T1-T11 全过；一套探针两通道：Direct 本地探针+Connector DataUpload→gateway Sink；真 PG 集成；覆盖率合并口径达标 libs-metrics 94.6%/connector 84.8%/gateway 81.1%/console 82.3%；dev-verify Direct 采集心跳可见）| 2026-08-11 起草、approve；08-12 实施完成 |
-| spec-1.4 | **frozen · 实施中**（快照采集：慢查询统计/表结构/实例配置，复用探针框架 + RowQuerier/Snapshot 扩展，能力探测降级；Q1-Q6 全采★） | 2026-08-12 起草并 approve |
+| spec-1.4 | **frozen · 实施完成**（T1-T13 全过；真 openGauss 5.0.3 校准出 dbe_perf 两处列名错 + 表结构排序错 + spec-1.3 遗留的复制延迟方言错；字面量金丝雀在真机实证；覆盖率 connector 87.3%/console 82.2%/gateway 81.5%/libs-metrics 84.7%；dev-verify ALL PASS 三类快照心跳可见）| 2026-08-12 起草并 approve；08-13 实施完成 |
 | 其余 Stage 1 specs | 按序起草（严格事前 approve） | — |
