@@ -58,8 +58,9 @@ var postgresSlowlogSources = []snapshotSource{
 	},
 	{
 		// openGauss。dbe_perf 视图需 monadmin 权限；耗时单位为微秒故换算为毫秒。
-		// 列名以 openGauss 3.x 文档为准，**尚未对真机双验**——spec-1.16 验收环境校验；
-		// 校验失败时该源整体报错，链路降级为 CapabilityMissing 而非中断采集。
+		// 列名对 openGauss-lite 5.0.3 实测校准（2026-08-12）：该视图**无** avg_elapse_time
+		// （均值由 total/n_calls 算出）、**无**库名列（故 database 留空而非编造）。
+		// query 列实测已规范化（字面量为 ?），AD-3 前提成立。
 		Name:     "dbe_perf",
 		ProbeSQL: `SELECT 1 FROM pg_namespace WHERE nspname = 'dbe_perf'`,
 		Queries: []snapshotQuery{{
@@ -67,9 +68,9 @@ var postgresSlowlogSources = []snapshotSource{
 			MaxRows: SlowlogTopN,
 			SQL: `SELECT unique_sql_id::text AS query_id, query AS text, n_calls AS calls,
 					total_elapse_time / 1000.0 AS total_ms,
-					avg_elapse_time / 1000.0 AS mean_ms,
+					total_elapse_time / NULLIF(n_calls, 0) / 1000.0 AS mean_ms,
 					max_elapse_time / 1000.0 AS max_ms,
-					n_returned_rows AS rows, db_name AS database
+					n_returned_rows AS rows
 				FROM dbe_perf.summary_statement
 				WHERE n_calls > 0
 				ORDER BY total_elapse_time DESC
@@ -100,7 +101,7 @@ var postgresSchemaSources = []snapshotSource{{
 				)
 				SELECT nspname AS schema, relname AS name,
 					size_bytes::text AS size_bytes, row_estimate::bigint::text AS row_estimate
-				FROM t ORDER BY size_bytes DESC`,
+				FROM t ORDER BY t.size_bytes DESC`,
 		},
 		{
 			Name:    "columns",
