@@ -106,14 +106,23 @@ func startCollector(ctx context.Context, cfg appConfig, store *repo.Store, direc
 	} else {
 		provider.Logger.Info("collector: connector path disabled (no GATEWAY_URL); direct-only")
 	}
+	// 同一个 BufferSink 兼任指标与快照落点（spec-1.5 换 TimescaleDB 时分别实现）。
 	sink := metrics.NewBufferSink(metricsSinkCapacity)
 	ccfg := collector.DefaultConfig()
 	if cfg.MetricsInterval > 0 {
 		ccfg.Interval = cfg.MetricsInterval
 	}
-	c := collector.New(store, direct, connCollector, sink, ccfg, cfg.DefaultTenantID, provider.Logger)
+	if cfg.SlowlogInterval > 0 {
+		ccfg.SlowlogInterval = cfg.SlowlogInterval
+	}
+	if cfg.MetaInterval > 0 {
+		ccfg.MetaInterval = cfg.MetaInterval
+	}
+	c := collector.New(store, direct, connCollector, sink, sink, ccfg, cfg.DefaultTenantID, provider.Logger)
 	go c.Run(ctx)
-	provider.Logger.Info("collector started", "interval", ccfg.Interval, "connector_path", cfg.GatewayURL != "")
+	provider.Logger.Info("collector started",
+		"metrics_interval", ccfg.Interval, "slowlog_interval", ccfg.SlowlogInterval,
+		"meta_interval", ccfg.MetaInterval, "connector_path", cfg.GatewayURL != "")
 }
 
 // runServer 装配控制面 API 服务（spec-1.1 D2）：repo 基座 + 凭据加密 + httpapi

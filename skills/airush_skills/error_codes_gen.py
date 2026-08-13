@@ -31,4 +31,6 @@ ERROR_CODES: dict[str, dict[str, object]] = {
     "AR_DATASOURCE_CONNECT_FAILED": {"level": "E5", "http": 502, "message": "数据源连接失败", "deprecated": False},
     "AR_DATASOURCE_TEST_TIMEOUT": {"level": "E5", "http": 504, "message": "数据源连接测试超时", "deprecated": False},
     "AR_METRICS_COLLECT_FAILED": {"level": "E5", "http": 502, "message": "指标采集失败", "deprecated": False},
+    "AR_SNAPSHOT_COLLECT_FAILED": {"level": "E5", "http": 502, "message": "快照采集失败", "deprecated": False},
+    "AR_COLLECT_UNSUPPORTED_KIND": {"level": "E4", "http": 400, "message": "不支持的采集类型", "deprecated": False},
 }
