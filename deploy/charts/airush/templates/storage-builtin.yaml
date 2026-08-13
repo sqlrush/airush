@@ -32,6 +32,13 @@ spec:
       containers:
         - name: postgres
           image: {{ .Values.storage.pg.image }}
+          # 预加载 pg_stat_statements，使慢查询快照（spec-1.4）在开发环境走成功路径
+          # 而非能力降级。扩展本身仍需 CREATE EXTENSION（migrate job 负责）。
+          args:
+            - "-c"
+            - "shared_preload_libraries=pg_stat_statements"
+            - "-c"
+            - "pg_stat_statements.track=all"
           env:
             - name: POSTGRES_PASSWORD
               value: {{ .Values.storage.pg.password | quote }}
