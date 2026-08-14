@@ -37,15 +37,15 @@ func TestDirectMetricsCollection(t *testing.T) {
 	for _, m := range batch.Metrics {
 		byName[m.Name] = m
 	}
-	if m, ok := byName["pg.connections.total"]; !ok || m.Value < 1 {
+	if m, ok := byName["db.connections.total"]; !ok || m.Value < 1 {
 		t.Fatalf("connections.total = %+v (want >=1)", m)
 	}
-	if m, ok := byName["pg.cache.hit_ratio"]; ok {
+	if m, ok := byName["db.cache.hit_ratio"]; ok {
 		if m.Value < 0 || m.Value > 1 {
 			t.Fatalf("cache.hit_ratio = %v, want 0..1", m.Value)
 		}
 	}
-	if m, ok := byName["pg.connections.max"]; !ok || m.Value < 1 {
+	if m, ok := byName["db.connections.max"]; !ok || m.Value < 1 {
 		t.Fatalf("connections.max = %+v", m)
 	}
 	// 复制延迟在单机主库应缺采（partial），不算错误

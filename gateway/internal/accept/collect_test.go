@@ -88,7 +88,7 @@ func TestHandleDataUploadPublishesAndSignals(t *testing.T) {
 
 	batch := metrics.Batch{
 		DatasourceID: "ds1", EngineFamily: "postgres", CatalogVersion: metrics.CatalogVersion,
-		Metrics: []metrics.Metric{{Name: "pg.connections.active", Value: 3, Unit: metrics.UnitCount}},
+		Metrics: []metrics.Metric{{Name: "db.connections.active", Value: 3, Unit: metrics.UnitCount}},
 	}
 	payload, _ := json.Marshal(batch)
 	s.handleDataUpload(context.Background(), sess, &connectorv1.DataUpload{

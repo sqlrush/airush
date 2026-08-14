@@ -47,7 +47,7 @@ func TestDBProbeHandleProducesDataUpload(t *testing.T) {
 	}
 	// 值合理域抽样（T2）：缓存命中率 ∈ [0,1]。
 	for _, m := range batch.Metrics {
-		if m.Name == "pg.cache.hit_ratio" && (m.Value < 0 || m.Value > 1) {
+		if m.Name == "db.cache.hit_ratio" && (m.Value < 0 || m.Value > 1) {
 			t.Fatalf("hit_ratio out of domain: %v", m.Value)
 		}
 	}

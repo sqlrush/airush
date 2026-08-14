@@ -448,7 +448,7 @@ func respondMetrics(stream connectorv1.SessionService_SessionClient) {
 		}
 		batch := metrics.Batch{
 			DatasourceID: "ds1", EngineFamily: "postgres", CatalogVersion: metrics.CatalogVersion,
-			Metrics: []metrics.Metric{{Name: "pg.connections.active", Value: 5, Unit: metrics.UnitCount}},
+			Metrics: []metrics.Metric{{Name: "db.connections.active", Value: 5, Unit: metrics.UnitCount}},
 		}
 		payload, _ := json.Marshal(batch)
 		_ = stream.Send(&connectorv1.ClientFrame{Frame: &connectorv1.ClientFrame_DataUpload{

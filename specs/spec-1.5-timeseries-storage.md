@@ -561,3 +561,14 @@ func (q *Querier) SnapshotHistory(ctx, datasourceID, kind string, limit int) ([]
   **不改本 spec 落的任何表**——这是本 spec 表数收敛承诺的兑现点；
 - **spec-3.9**（巡检调度中心）：采集策略从编译期常量搬到配置表（§1.2 #3）；
 - **远期**（roadmap §4.4）：`datasource_relations` 拓扑边表（§1.2 #1）。
+
+---
+
+## §11 实施 Changelog（frozen 后追加，不重写正文）
+
+| 日期 | 变更 |
+|---|---|
+| 2026-08-14 | **慢查询耗时类 series 改用秒，名字随之由 `db.slowlog.total_ms` 等改为 `db.slowlog.total_seconds` 等。** §2.2 示例表原写 `_ms`，与 §2.6 的规范层定位不自洽——`Unit` 词表只有 count/ratio/bytes/seconds，没有毫秒项。规范层的意义就是单位统一：PG 的 `pg_stat_statements` 给毫秒、MySQL 的慢日志给秒，换算在采集侧消化一次（`metrics.SlowQuerySeriesValues` 是唯一换算点），下游 skill 与图表永不必判断"这条是毫秒还是秒"。属实现期发现的 spec 文字缺陷，语义与 Deliverable 边界不变 |
+| 2026-08-14 | **`pg.database.size_bytes` 改规范名时一并更名为 `db.storage.size_bytes`。** 该指标统计的是实例上全部库的总字节数，而 "database" 一词在 MySQL 里指 schema、在 openGauss 里指库，跨引擎歧义大，不适合做规范指标名的中段 |
+| 2026-08-14 | **新增规范指标 `db.replication.lag_seconds`**（§2.6 表中已列出，本次实现）。PG 族用 `now() - pg_last_xact_replay_timestamp()` 换算，与 MySQL 的 `Seconds_Behind_Master` 语义对齐；原 `pg.replication.lag_bytes` 保留在引擎特有层（MySQL 无字节级延迟概念，不硬凑） |
+| 2026-08-14 | **迁移文件组织受两条 TimescaleDB 约束定型**（实测，非推演）：① 连续聚合必须 `WITH NO DATA`——golang-migrate 整文件单次 Exec 构成隐式事务块，`WITH DATA` 报 `cannot run inside a transaction block` 且整批回滚；② `materialized_only` 必须显式设 `false`——2.13+ 默认为 `true`，那样刚写入未物化的点在视图里不可见，控制台会出现假数据缺口（对应 §3.7 与 T16） |

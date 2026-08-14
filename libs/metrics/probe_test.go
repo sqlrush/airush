@@ -62,10 +62,12 @@ func TestProbeCollectFull(t *testing.T) {
 
 func TestProbeCollectPartial(t *testing.T) {
 	t.Parallel()
-	// 让复制延迟指标（主库无值）与一条 failing 指标缺采
+	// 让复制延迟指标（主库无值）与一条 failing 指标缺采。
+	// 按名查而非按下标：目录中间插入新条目会静默换掉被测对象，注释还留在原处
+	// （2026-08-14 加 db.replication.lag_seconds 时正好踩到）。
 	q := &fakeQuerier{
-		absent:  map[string]bool{PostgresCatalog[9].SQL: true}, // pg.replication.lag_bytes
-		failing: map[string]bool{PostgresCatalog[6].SQL: true}, // pg.locks.waiting
+		absent:  map[string]bool{catalogSQL(t, "pg.replication.lag_bytes"): true},
+		failing: map[string]bool{catalogSQL(t, "db.locks.waiting"): true},
 	}
 	batch, err := Probe{DatasourceID: "ds-1", EngineFamily: "postgres"}.Collect(context.Background(), q)
 	if err != nil {
@@ -168,4 +170,16 @@ func containsWord(s, word string) bool {
 		}
 	}
 	return false
+}
+
+// catalogSQL 按目录名取该条目的主 SQL；找不到即失败（防改名后测试静默失准）。
+func catalogSQL(t *testing.T, name string) string {
+	t.Helper()
+	for _, e := range PostgresCatalog {
+		if e.Name == name {
+			return e.SQL
+		}
+	}
+	t.Fatalf("目录里没有 %s —— 是否改名后忘了同步测试", name)
+	return ""
 }

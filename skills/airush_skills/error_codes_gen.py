@@ -33,4 +33,7 @@ ERROR_CODES: dict[str, dict[str, object]] = {
     "AR_METRICS_COLLECT_FAILED": {"level": "E5", "http": 502, "message": "指标采集失败", "deprecated": False},
     "AR_SNAPSHOT_COLLECT_FAILED": {"level": "E5", "http": 502, "message": "快照采集失败", "deprecated": False},
     "AR_COLLECT_UNSUPPORTED_KIND": {"level": "E4", "http": 400, "message": "不支持的采集类型", "deprecated": False},
+    "AR_TIMESERIES_WRITE_FAILED": {"level": "E4", "http": 500, "message": "服务内部错误", "deprecated": False},
+    "AR_TIMESERIES_QUERY_FAILED": {"level": "E4", "http": 500, "message": "服务内部错误", "deprecated": False},
+    "AR_TIMESERIES_UNDECLARED_SERIES": {"level": "E4", "http": 500, "message": "服务内部错误", "deprecated": False},
 }

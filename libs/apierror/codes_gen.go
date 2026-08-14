@@ -36,6 +36,9 @@ const (
 	CodeMetricsCollectFailed Code = "AR_METRICS_COLLECT_FAILED"
 	CodeSnapshotCollectFailed Code = "AR_SNAPSHOT_COLLECT_FAILED"
 	CodeCollectUnsupportedKind Code = "AR_COLLECT_UNSUPPORTED_KIND"
+	CodeTimeseriesWriteFailed Code = "AR_TIMESERIES_WRITE_FAILED"
+	CodeTimeseriesQueryFailed Code = "AR_TIMESERIES_QUERY_FAILED"
+	CodeTimeseriesUndeclaredSeries Code = "AR_TIMESERIES_UNDECLARED_SERIES"
 )
 
 var codeMeta = map[Code]Meta{
@@ -71,4 +74,7 @@ var codeMeta = map[Code]Meta{
 	CodeMetricsCollectFailed: {Level: "E5", HTTP: 502, Message: "指标采集失败", Deprecated: false},
 	CodeSnapshotCollectFailed: {Level: "E5", HTTP: 502, Message: "快照采集失败", Deprecated: false},
 	CodeCollectUnsupportedKind: {Level: "E4", HTTP: 400, Message: "不支持的采集类型", Deprecated: false},
+	CodeTimeseriesWriteFailed: {Level: "E4", HTTP: 500, Message: "服务内部错误", Deprecated: false},
+	CodeTimeseriesQueryFailed: {Level: "E4", HTTP: 500, Message: "服务内部错误", Deprecated: false},
+	CodeTimeseriesUndeclaredSeries: {Level: "E4", HTTP: 500, Message: "服务内部错误", Deprecated: false},
 }
