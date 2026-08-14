@@ -49,10 +49,10 @@
 | AD-4 | 凭据边界 | **分模式**（2026-08-10 修订）：Connector 模式凭据只存客户侧（本地加密），平台永不持有；直连模式凭据由平台 secret 管理**加密存储**（k8s Secret/KMS 信封加密），任何通道禁明文（入库/日志/LLM prompt） | 跨网 SaaS 场景平台集中保管仍否决：单点爆炸半径覆盖全部客户数据库；直连模式限本地部署（平台本就在客户域内，爆炸半径不跨客户） |
 | AD-5 | 记忆库选型 | **Graphiti + Neo4j**（时序知识图谱，Neo4j 自带向量索引，图+向量一套） | Mem0 备选（保留迁移可能）；纯 pgvector 否决为终态（丢失时序因果），但作为 MVP 过渡允许 |
 | AD-6 | 知识库与记忆库基础设施 | **合并**：共用 Neo4j 图谱（按租户+用途命名空间隔离）；纯文档 RAG 用控制面 pgvector | 独立两套图+向量否决：运维成本翻倍且能力重合 |
-| AD-7 | 指标时序存储 | **TimescaleDB**（PG 插件，与控制面同栈） | VictoriaMetrics 留作规模化备选 |
+| AD-7 | 指标时序存储 | **TimescaleDB**（PG 插件，与控制面同栈）；启用列存压缩 | VictoriaMetrics 留作规模化备选。**已知约束**（2026-08-14 实测）：列存压缩与 RLS 在同一张表互斥（`columnstore cannot be used on table with row security`），故指标 hypertable 走 AD-10 的等效隔离形态 |
 | AD-8 | LLM 接入 | **独立 LLM 网关**（LiteLLM 起步）：多供应商、按租户配额计费、模型路由、缓存降级 | agent 直连供应商否决：成本与限流失控 |
 | AD-9 | 动作类操作安全 | **审批工作流 + 一次性令牌 + 双层白名单**（平台定义操作类型、客户侧 Connector 配置允许范围）；只读操作自动执行全量审计 | 无审批直接执行否决：AI 对生产库操作必须有人工门 |
-| AD-10 | 多租户隔离 | 控制面 PG **Row-Level Security** 强制 tenant_id；记忆/知识按租户命名空间；每 Connector 独立 mTLS 证书；大客户可升级独立 Runtime 池 | 应用层过滤否决：一处遗漏即数据串租 |
+| AD-10 | 多租户隔离 | 控制面 PG **由数据库强制**按 tenant_id 隔离（2026-08-14 修订）：默认形态 = RLS（`ENABLE`+`FORCE`+policy）；**等效形态** = 基表对应用角色零授权 + `security_barrier` 视图 + `WITH CHECK OPTION`，仅用于 RLS 与存储引擎特性互斥的表（见下）。记忆/知识按租户命名空间；每 Connector 独立 mTLS 证书；大客户可升级独立 Runtime 池 | 应用层过滤否决：一处遗漏即数据串租。等效形态的准入门槛：应用角色对基表无任何权限，读隔离/无上下文 fail-closed/绕过基表被拒/越权写被拒 四项须有集成用例固化 |
 | AD-11 | Agent 核心 | **基于 ~/codexgo 抽核改造**（Go）：复用 core/protocol/mcp/multiagent/threadstore，换存储后端为 PG/Redis、注入租户上下文、服务化运行；保留差分基建以持续移植 codex 上游能力。详见 `docs/agent-core-design.md` | codex 原生否决：引入 Rust 栈 + 935K 行陌生代码深度 fork；opencode 否决：Node 服务端进生产栈；开源框架（LangGraph 等）否决：框架锁定且多租户服务化工作量相同 |
 | AD-12 | Skill 调用协议 | **MCP（streamable HTTP）**：skill 容器 = 无状态 MCP server，工具发现/schema/调用走 MCP 标准；替换早期 gRPC 设想 | 自定义 gRPC 否决：需自建工具发现与 schema 机制，且与 codexgo MCP client 资产脱节 |
 
@@ -128,7 +128,10 @@ Skill 注册表存控制面（记录 MCP endpoint 与租户可见性）；agent 
 2. **凭据边界**：见 AD-4。平台侧 secret（LLM key、内部服务凭据）用 Vault/k8s Secret 管理，
    永不入代码、镜像、日志。
 3. **操作边界**：见 AD-9。审计日志记录完整链路（用户/agent/理由/指令/结果），不可篡改存储。
-4. **租户边界**：见 AD-10。
+4. **租户边界**：见 AD-10。判定标准是"**隔离由数据库强制**"而非"必须是 RLS"——
+   应用角色拿不到未经租户过滤的数据面即达标。默认用 RLS；仅当 RLS 与存储引擎特性
+   硬冲突（当前唯一实例：TimescaleDB 列存压缩）才用等效形态，且须逐表在 spec 中登记
+   理由并被四项集成用例覆盖。等效形态**不是**放宽——应用层 WHERE 过滤依然否决。
 
 ## 5. 分期（详见 docs/development-roadmap.md）
 
@@ -146,3 +149,4 @@ Skill 注册表存控制面（记录 MCP endpoint 与租户可见性）；agent 
 | 2026-08-08 | 初版（brainstorming 收敛） | user |
 | 2026-08-08 | 新增 AD-11（Agent 核心 = codexgo 抽核）、AD-12（Skill 协议 = MCP）；技术栈联动变更：Agent Runtime Python→Go、Skill gRPC→MCP、新增记忆服务组件 | user（选型问答确认） |
 | 2026-08-10 | AD-2 增平台直连模式（本地部署 k8s 为主）、AD-4 改分模式凭据边界（直连凭据平台加密保管）；MVP 蓝本 MySQL→openGauss（PG 协议族），MySQL 族移至 Stage 3；Stage 4 移除计费系统 | user（roadmap 三项调整指示） |
+| 2026-08-14 | AD-10 由"必须 RLS"改为"必须由数据库强制隔离"，新增等效形态（基表零授权 + security_barrier 视图 + WITH CHECK OPTION）及其四项准入门槛；AD-7 登记"列存压缩与 RLS 互斥"实测约束。**起因**：spec-1.5 起草时发现 TimescaleDB 压缩与 RLS 在同一表不可共存，两条 AD 直接冲突；等效形态经 `deploy/scripts/probe-timescale-rls2.sh` 实测四项全过（其中越权写入初验未拦住，补 WITH CHECK OPTION 后堵上） | user（选项 A） |
