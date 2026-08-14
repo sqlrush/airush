@@ -159,9 +159,18 @@ jobs:
         if: needs.changes.outputs.py == 'true' || github.event_name == 'push'
         with:
           enable-cache: true
+      # openGauss 真机校验（spec-1.4）：采集目录的方言差异（dbe_perf 列名、
+      # PG 9.2 血统的 WAL 函数名）单测与 fake querier 都抓不到，只有对真实实例
+      # 执行才暴露。未起容器时集成用例会跳过 openGauss 分支——那等于没验。
+      - name: start openGauss
+        if: needs.changes.outputs.go == 'true' || github.event_name == 'push'
+        run: deploy/scripts/ci-opengauss-up.sh
       - name: integration go
         if: needs.changes.outputs.go == 'true' || github.event_name == 'push'
         run: make integration-test-go
+      - name: stop openGauss
+        if: always()
+        run: docker rm -f airush-ci-opengauss >/dev/null 2>&1 || true
       - name: coverage gate（合并口径阻断，spec-1.1 起）
         if: needs.changes.outputs.go == 'true' || github.event_name == 'push'
         run: COVER_ENFORCE=1 make cover-go

@@ -79,18 +79,23 @@ func (p SnapshotProbe) Collect(ctx context.Context, q RowQuerier, kind string) (
 	return snap, nil
 }
 
-// sourceAvailable 跑能力探测（无 ProbeSQL 即总是可用）。
+// sourceAvailable 判定源是否可用：先判存在（ProbeSQL 返回行），再判可读
+// （ReadCheckSQL 不报错）。任一不成立即"该源不可用"，让链路走候选链或降级，
+// 而不是把权限问题冒充成采集失败。
 func sourceAvailable(ctx context.Context, q RowQuerier, source snapshotSource) (bool, error) {
-	if source.ProbeSQL == "" {
-		return true, nil
+	if source.ProbeSQL != "" {
+		rows, err := q.QueryRows(ctx, source.ProbeSQL, 1)
+		// 探测本身失败（视图不存在/无权限）同样按不可用处理。
+		if err != nil || len(rows) == 0 {
+			return false, nil
+		}
 	}
-	rows, err := q.QueryRows(ctx, source.ProbeSQL, 1)
-	if err != nil {
-		// 探测失败（权限/视图不存在）按"该源不可用"处理，不算采集错误——
-		// 让链路走到降级而不是报错中断。
-		return false, nil
+	if source.ReadCheckSQL != "" {
+		if _, err := q.QueryRows(ctx, source.ReadCheckSQL, 1); err != nil {
+			return false, nil
+		}
 	}
-	return len(rows) > 0, nil
+	return true, nil
 }
 
 // runSourceQueries 依次执行源内每条查询，按查询名归集结果。

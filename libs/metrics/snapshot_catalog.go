@@ -17,12 +17,20 @@ type snapshotQuery struct {
 }
 
 // snapshotSource 是某个 kind 的一个采集源候选。
+//
+// 可用性要两步判定，缺一不可（2026-08-13 CI 实测教训）：对象**存在**不等于当前账号
+// **读得到**——openGauss 的 dbe_perf 视图族需 monadmin，没有该角色时 pg_namespace 里
+// 照样查得到该 schema，但一 SELECT 就 42501。只查存在会让链路误判"能力可用"，
+// 随后硬失败，而不是降级为 CapabilityMissing。
 type snapshotSource struct {
 	// Name 记入 Snapshot.Source，标识实际命中的源。
 	Name string
-	// ProbeSQL 是能力探测：返回 ≥1 行即视为可用；空串表示无需探测（总是可用）。
+	// ProbeSQL 判存在：返回 ≥1 行即存在；空串表示无需探测（总是存在）。
 	ProbeSQL string
-	Queries  []snapshotQuery
+	// ReadCheckSQL 判可读：执行不报错即可读，行数不参与判定（故一律带 WHERE false，
+	// 零行零代价）。空串表示无需单独判可读。
+	ReadCheckSQL string
+	Queries      []snapshotQuery
 }
 
 // 排除的系统 schema（表结构快照只看业务对象）。
@@ -42,6 +50,8 @@ var postgresSlowlogSources = []snapshotSource{
 		// total_time 改名；更早版本走候选链下一个或降级 CapabilityMissing）。
 		Name:     "pg_stat_statements",
 		ProbeSQL: `SELECT 1 FROM pg_extension WHERE extname = 'pg_stat_statements'`,
+		// 扩展装了但当前账号无权读该视图时，这条会报错 → 该源判为不可用。
+		ReadCheckSQL: `SELECT 1 FROM pg_stat_statements WHERE false`,
 		Queries: []snapshotQuery{{
 			Name:    "slow_queries",
 			MaxRows: SlowlogTopN,
@@ -63,6 +73,9 @@ var postgresSlowlogSources = []snapshotSource{
 		// query 列实测已规范化（字面量为 ?），AD-3 前提成立。
 		Name:     "dbe_perf",
 		ProbeSQL: `SELECT 1 FROM pg_namespace WHERE nspname = 'dbe_perf'`,
+		// dbe_perf 需 monadmin：无该角色时 schema 查得到但一 SELECT 就 42501，
+		// 故必须单独判可读（2026-08-13 CI 实测）。
+		ReadCheckSQL: `SELECT 1 FROM dbe_perf.summary_statement WHERE false`,
 		Queries: []snapshotQuery{{
 			Name:    "slow_queries",
 			MaxRows: SlowlogTopN,

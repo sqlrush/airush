@@ -354,3 +354,60 @@ func TestSnapshotCatalogHasNoRowData(t *testing.T) {
 		}
 	}
 }
+
+// TestSnapshotProbeExistsButUnreadable：对象存在但当前账号读不到（openGauss 的
+// dbe_perf 需 monadmin）→ 该源判不可用、链路降级，而不是硬报错。
+// 这是 2026-08-13 CI 首次接入真 openGauss 时暴露的缺陷。
+func TestSnapshotProbeExistsButUnreadable(t *testing.T) {
+	t.Parallel()
+	q := &fakeRowQuerier{
+		responses: map[string][]map[string]string{
+			// 两个源的"存在性"都成立……
+			"pg_extension":         {{"?column?": "1"}},
+			"nspname = 'dbe_perf'": {{"?column?": "1"}},
+		},
+		failOn: map[string]error{
+			// ……但两个源的可读性探测都因权限失败。
+			"FROM pg_stat_statements WHERE false":         errors.New("permission denied"),
+			"FROM dbe_perf.summary_statement WHERE false": errors.New("permission denied for schema dbe_perf"),
+		},
+	}
+	probe := SnapshotProbe{DatasourceID: "ds1", EngineFamily: "postgres"}
+
+	snap, err := probe.Collect(context.Background(), q, SnapshotKindSlowlog)
+	if err != nil {
+		t.Fatalf("unreadable source must degrade, not fail: %v", err)
+	}
+	if !snap.CapabilityMissing || snap.Source != "" {
+		t.Fatalf("snapshot = %+v, want CapabilityMissing", snap)
+	}
+	// 可读性不通过时，绝不该再去跑该源的采集 SQL。
+	for _, sql := range q.executed {
+		if strings.Contains(sql, "ORDER BY total_elapse_time") ||
+			strings.Contains(sql, "ORDER BY s.total_exec_time") {
+			t.Fatalf("collect query ran despite failed read check: %q", sql)
+		}
+	}
+}
+
+// TestSnapshotProbeReadableSourceStillCollects：可读性探测通过（零行也算通过，
+// 因为判据是"不报错"而非"有行"）时正常采集。
+func TestSnapshotProbeReadableSourceStillCollects(t *testing.T) {
+	t.Parallel()
+	q := &fakeRowQuerier{responses: map[string][]map[string]string{
+		"pg_extension":                        {{"?column?": "1"}},
+		"FROM pg_stat_statements WHERE false": {}, // 零行 = 可读且当前为空
+		"pg_stat_statements s": {
+			{"query_id": "1", "text": "SELECT $1", "calls": "2", "total_ms": "4"},
+		},
+	}}
+	probe := SnapshotProbe{DatasourceID: "ds1", EngineFamily: "postgres"}
+
+	snap, err := probe.Collect(context.Background(), q, SnapshotKindSlowlog)
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	if snap.Source != "pg_stat_statements" || len(snap.SlowQueries) != 1 {
+		t.Fatalf("snapshot = source %q, %d entries", snap.Source, len(snap.SlowQueries))
+	}
+}
