@@ -93,7 +93,10 @@ Stage 0 → Stage 1 → Stage 2 → Stage 3 → Stage 4
 - [ ] hello-world 服务的日志/指标/trace 在本地可观测栈中可见；
 - [ ] 控制面 PG 迁移框架跑通第一个 migration。
 
-## 3. Stage 1：单租户端到端 MVP（16 个功能点，MySQL 协议族）
+## 3. Stage 1：单租户端到端 MVP（16 个功能点，**openGauss（PG 协议族）**）
+
+> 标题原写"MySQL 协议族"，是 2026-08-10 蓝本对调（MySQL→openGauss）时漏改的陈迹，
+> 2026-08-14 user 指出并更正。MVP 蓝本是 **openGauss**；MySQL 族在 Stage 3（spec-3.1）。
 
 ### 3.1 功能点清单
 
@@ -115,7 +118,7 @@ Stage 0 → Stage 1 → Stage 2 → Stage 3 → Stage 4
 | spec-1.13 | 控制台前端：数据库模块与巡检视图 | 数据库模块（列表/拓扑双视图、接入向导、主备/集群关系、Agent 管理域、节点下钻实例详情）、巡检报告展示 |
 | spec-1.14 | 控制台前端：通用对话工作台 | 通用对话窗口（诊断/问答/长任务，登录默认落地页）、内容块渲染器注册表、历史会话管理 |
 | spec-1.15 | 审计日志基线 | 全链路审计事件模型与查询界面 |
-| spec-1.16 | Stage 1 验收 | 真实 MySQL 端到端 demo + 性能/成本基线报告 |
+| spec-1.16 | Stage 1 验收 | 真实 **openGauss** 端到端 demo + 性能/成本基线报告（原写 MySQL，2026-08-14 更正） |
 
 ### 3.2 Stage 1 验收标准
 
@@ -149,6 +152,30 @@ spec-3.9 巡检调度中心 / spec-3.10 Stage 3 验收。
 spec-4.1 ~~计费与用量~~（**不做**，2026-08-10 user 定；编号保留不复用）/ spec-4.2 报表中心 /
 spec-4.3 高可用与容灾 / spec-4.4 大客户独立池 / spec-4.5 部署打包（Helm 离线包 + 本地模型）/
 spec-4.6 SLA 监控与状态页 / spec-4.7 GA 验收。
+
+### 4.4 远期候选：数据库管理动作类 skill（**不排期，2026-08-14 user 定**）
+
+> **当前不展开。** user 定调：现阶段全部功能围绕「基于 k8s 容器的智能体 + 记忆 /
+> 知识库等平台能力」展开；主备 / 集群 / 容灾等**管理动作**类 skill 整体归远期候选，
+> 不进任何 Stage 排期，不起草 spec。本节只做登记，避免同一讨论反复从零开始。
+
+已识别的候选面（讨论产物，非承诺）：
+
+| 组 | 内容 |
+|---|---|
+| 基座 | 拓扑关系边表（`datasource_relations`）、操作工单模型与 op_type 目录、操作 dry-run 与影响评估 |
+| 主备 | 拓扑发现与漂移、复制健康诊断、switchover、failover、备库重建 |
+| 集群 | 节点健康、容量均衡分析、扩容 / 下线 / 滚动重启 |
+| 容灾 | 配对状态、就绪度实测（RPO/RTO）、演练、灾备切换、回切 |
+
+**两条必须随之带走的约束**（真做时的前置，不因归档而失效）：
+
+1. **Connector 执行面边界**：当前受控执行器是「命令类型白名单 + 载荷零 SQL」的只读探针
+   （spec-1.2/1.4）。上述动作需要 `gs_ctl`/`cm_ctl` 一类**系统命令**，属 AD-9 操作边界的
+   实质扩张（改变 Connector 被攻破后的爆炸半径）。启动该组前必须先定 AD 级决策，
+   不得以"加个 skill"的形态混入；
+2. **拓扑表达缺口**：现模型（`datasource_groups` + `group_role`）是扁平分组，
+   表达不了组与组之间的关系（容灾配对、级联复制、双活）。spec-1.5 §1「不包含」已登记。
 
 ## 5. 单功能点研发 5 阶段流程（强制）
 
@@ -206,4 +233,5 @@ SPEC（编码前讨论） → TDD 编码 → 集成测试 → Code Review → Re
 | spec-1.17 | **frozen · 实施完成**（T1-T10 全过；directconn 真 PG 集成；覆盖率达标）| 2026-08-11 起草、approve、实施 |
 | spec-1.3 | **frozen · 实施完成**（T1-T11 全过；一套探针两通道：Direct 本地探针+Connector DataUpload→gateway Sink；真 PG 集成；覆盖率合并口径达标 libs-metrics 94.6%/connector 84.8%/gateway 81.1%/console 82.3%；dev-verify Direct 采集心跳可见）| 2026-08-11 起草、approve；08-12 实施完成 |
 | spec-1.4 | **frozen · 实施完成**（T1-T13 全过；真 openGauss 5.0.3 校准出 dbe_perf 两处列名错 + 表结构排序错 + spec-1.3 遗留的复制延迟方言错；字面量金丝雀在真机实证；覆盖率 connector 87.3%/console 82.2%/gateway 81.5%/libs-metrics 84.7%；dev-verify ALL PASS 三类快照心跳可见）| 2026-08-12 起草并 approve；08-13 实施完成 |
+| spec-1.5 | **frozen · 实施中**（Q1-Q7 全采 ★；表数收敛承诺：采集侧固定 3 张表，后续加采集能力/加引擎只加编译期目录常量；AD-10 等效形态的唯一使用者，四项隔离用例为硬门槛且排实施第 1 步）| 2026-08-14 起草并 approve |
 | 其余 Stage 1 specs | 按序起草（严格事前 approve） | — |
