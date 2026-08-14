@@ -10,6 +10,8 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/sqlrush/airush/libs/metrics"
 )
 
 // Client 持有 console 内部 API 基址与 svc token。
@@ -106,4 +108,21 @@ func parseAPIError(status int, body []byte) error {
 	}
 	_ = json.Unmarshal(body, &e)
 	return &APIError{Status: status, Code: e.Code, Msg: e.Message}
+}
+
+// UploadMetrics 把 Connector 上报的指标批转发给 console 落库（spec-1.5 D5，§8 Q5-A）。
+//
+// tenantID 由调用方从 Connector 的 mTLS 证书 SAN 解析后显式传入——不走 context 夹带。
+// gateway 是多租户中继，租户是这个操作的一等参数，藏进 ctx 只会让越权更难被看出来。
+func (c *Client) UploadMetrics(ctx context.Context, tenantID string, batch metrics.Batch) error {
+	return c.post(ctx, "/internal/v1/collected/metrics", map[string]any{
+		"tenant_id": tenantID, "batch": batch,
+	}, nil)
+}
+
+// UploadSnapshot 把 Connector 上报的快照转发给 console 落库。
+func (c *Client) UploadSnapshot(ctx context.Context, tenantID string, snap metrics.Snapshot) error {
+	return c.post(ctx, "/internal/v1/collected/snapshots", map[string]any{
+		"tenant_id": tenantID, "snapshot": snap,
+	}, nil)
 }

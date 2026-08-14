@@ -13,7 +13,6 @@ import (
 	"google.golang.org/grpc/credentials"
 
 	"github.com/sqlrush/airush/gateway/internal/consoleclient"
-	"github.com/sqlrush/airush/libs/metrics"
 	connectorv1 "github.com/sqlrush/airush/proto/gen/go/connector/v1"
 )
 
@@ -54,7 +53,7 @@ func Build(console *consoleclient.Client, tlsMat TLSMaterial, cfg SessionConfig,
 	enrollGRPC := grpc.NewServer(grpc.Creds(credentials.NewTLS(enrollTLS)))
 	connectorv1.RegisterEnrollmentServiceServer(enrollGRPC, NewEnrollmentServer(console, deps.Logger))
 
-	sessionSvc := NewSessionServer(console, cfg, deps.Sink, deps.SnapshotSink, deps.Logger)
+	sessionSvc := NewSessionServer(console, cfg, deps.Uploader, deps.Logger)
 	sessionGRPC := grpc.NewServer(grpc.Creds(credentials.NewTLS(sessionTLS)))
 	connectorv1.RegisterSessionServiceServer(sessionGRPC, sessionSvc)
 
@@ -64,9 +63,8 @@ func Build(console *consoleclient.Client, tlsMat TLSMaterial, cfg SessionConfig,
 // Deps 是接入面的横切依赖。
 type Deps struct {
 	Logger *slog.Logger
-	Sink   metrics.Sink // Connector 指标上报落点（spec-1.3 §2.4）；nil 时丢弃
-	// SnapshotSink 是慢日志/表结构/配置快照落点（spec-1.4）；nil 时丢弃。
-	SnapshotSink metrics.SnapshotSink
+	// Uploader 是采集数据上报出口（spec-1.5 D5）；nil 时走 discardUploader（记日志）。
+	Uploader Uploader
 }
 
 // Serve 在给定监听器上并发启动两个 server（阻塞直到出错）。

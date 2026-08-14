@@ -14,15 +14,41 @@ import (
 	connectorv1 "github.com/sqlrush/airush/proto/gen/go/connector/v1"
 )
 
+// sinkUploader 把 Sink/SnapshotSink 适配成 Uploader（仅测试）。
+// 生产路径的 Uploader 是 consoleclient（POST 给 console）；测试要用 BufferSink 断言
+// 内容，故加这层适配，并顺带记下每次上报所带的租户——租户是否被正确带上，
+// 正是 spec-1.5 把 Sink 换成 Uploader 的理由，值得单独断言。
+type sinkUploader struct {
+	sink      metrics.Sink
+	snapshots metrics.SnapshotSink
+	tenants   []string
+}
+
+func (u *sinkUploader) UploadMetrics(ctx context.Context, tenantID string, b metrics.Batch) error {
+	u.tenants = append(u.tenants, tenantID)
+	if u.sink == nil {
+		return nil
+	}
+	return u.sink.Publish(ctx, b)
+}
+
+func (u *sinkUploader) UploadSnapshot(ctx context.Context, tenantID string, s metrics.Snapshot) error {
+	u.tenants = append(u.tenants, tenantID)
+	if u.snapshots == nil {
+		return nil
+	}
+	return u.snapshots.PublishSnapshot(ctx, s)
+}
+
 func testSessionServer(sink metrics.Sink) *SessionServer {
-	snapshotSink, _ := sink.(metrics.SnapshotSink) // BufferSink 兼任两者；failSink 则为 nil→discard
-	return NewSessionServer(nil, DefaultSessionConfig(), sink, snapshotSink,
-		slog.New(slog.NewTextHandler(io.Discard, nil)))
+	snapshotSink, _ := sink.(metrics.SnapshotSink) // BufferSink 兼任两者；failSink 则为 nil
+	return testSessionServerWithSnapshots(sink, snapshotSink)
 }
 
 // testSessionServerWithSnapshots 显式注入快照落点（用于快照失败路径）。
 func testSessionServerWithSnapshots(sink metrics.Sink, snapshots metrics.SnapshotSink) *SessionServer {
-	return NewSessionServer(nil, DefaultSessionConfig(), sink, snapshots,
+	return NewSessionServer(nil, DefaultSessionConfig(),
+		&sinkUploader{sink: sink, snapshots: snapshots},
 		slog.New(slog.NewTextHandler(io.Discard, nil)))
 }
 

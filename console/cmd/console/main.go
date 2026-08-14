@@ -39,6 +39,8 @@ type appConfig struct {
 	// 快照采集间隔（spec-1.4）：慢查询统计与元数据各自节奏，下限护栏在 collector.Config。
 	SlowlogInterval time.Duration `env:"SLOWLOG_INTERVAL" default:"300s"`
 	MetaInterval    time.Duration `env:"META_INTERVAL"    default:"3600s"`
+	// spec-1.5：时序存储写入批上限（超出分批；0 取 tsstore.DefaultBatchMaxRows）。
+	TSBatchMaxRows int `env:"TS_BATCH_MAX_ROWS" default:"5000"`
 }
 
 // version 由构建期 -ldflags 注入（spec-0.10/0.11 定版链路）。

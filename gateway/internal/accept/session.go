@@ -44,38 +44,27 @@ type SessionServer struct {
 	console  *consoleclient.Client
 	registry *registry
 	cfg      SessionConfig
-	// DataUpload 落点（spec-1.3 §2.4：gateway 转 Sink）。指标与快照分列两个接口，
-	// 载荷与落库形态不同，spec-1.5 可分别实现。
-	sink         metrics.Sink
-	snapshotSink metrics.SnapshotSink
-	logger       *slog.Logger
-	nowFn        func() time.Time
+	// DataUpload 上报出口（spec-1.5 D5）：gateway 不落库，转发给 console。
+	// 带租户参数——gateway 是多租户中继，租户不能藏在 context 里（见 uploader.go）。
+	uploader Uploader
+	logger   *slog.Logger
+	nowFn    func() time.Time
 }
 
-// NewSessionServer 构造。sink 为 nil 时用丢弃 Sink（无 Connector 采集消费者的形态）。
+// NewSessionServer 构造。uploader 为 nil 时走 discardUploader（记日志，不静默吞）。
 func NewSessionServer(
 	console *consoleclient.Client, cfg SessionConfig,
-	sink metrics.Sink, snapshotSink metrics.SnapshotSink, logger *slog.Logger,
+	uploader Uploader, logger *slog.Logger,
 ) *SessionServer {
-	if sink == nil {
-		sink = discardSink{}
-	}
-	if snapshotSink == nil {
-		snapshotSink = discardSink{}
+	if uploader == nil {
+		uploader = discardUploader{logger: logger}
 	}
 	return &SessionServer{
 		console: console, registry: newRegistry(), cfg: cfg,
-		sink: sink, snapshotSink: snapshotSink, logger: logger,
+		uploader: uploader, logger: logger,
 		nowFn: time.Now,
 	}
 }
-
-// discardSink 在未配置消费者时吞掉上报（保证 loop 不 panic；生产必注入 buffer/TSDB Sink）。
-type discardSink struct{}
-
-func (discardSink) Publish(context.Context, metrics.Batch) error { return nil }
-
-func (discardSink) PublishSnapshot(context.Context, metrics.Snapshot) error { return nil }
 
 // DrainAll 供优雅下线调用（广播 Drain）。
 func (s *SessionServer) DrainAll(reason string) { s.registry.drainAll(reason) }
@@ -84,7 +73,7 @@ func (s *SessionServer) DrainAll(reason string) { s.registry.drainAll(reason) }
 var ErrConnectorOffline = errors.New("connector has no active session")
 
 // Dispatch 向指定连接器下发一条指令并等待其终态（spec-1.3 平台驱动采集）：成功回 nil
-// （采集数据已由 loop 收 DataUpload 落 Sink），失败回错误码，连接器离线回 ErrConnectorOffline，
+// （采集数据已由 loop 收 DataUpload 转发上报），失败回错误码，连接器离线回 ErrConnectorOffline，
 // 超时由 ctx 控制。
 func (s *SessionServer) Dispatch(ctx context.Context, connectorID string, cmd *connectorv1.Command) error {
 	sess, ok := s.registry.get(connectorID)
@@ -203,7 +192,7 @@ func (s *SessionServer) loop(stream connectorv1.SessionService_SessionServer, se
 	}
 }
 
-// onClientFrame 处理连接器上行帧：心跳（状态机 + ack）、DataUpload（落 Sink，spec-1.3）、
+// onClientFrame 处理连接器上行帧：心跳（状态机 + ack）、DataUpload（转发上报，spec-1.3/1.5）、
 // CommandResult（关联回触发方，PING/ECHO 或采集失败）。
 func (s *SessionServer) onClientFrame(ctx context.Context, stream connectorv1.SessionService_SessionServer,
 	sess *session, f *connectorv1.ClientFrame, degrade, offline *time.Timer, degradedAfter time.Duration,
@@ -217,15 +206,15 @@ func (s *SessionServer) onClientFrame(ctx context.Context, stream connectorv1.Se
 		}})
 	}
 	if du := f.GetDataUpload(); du != nil {
-		s.handleDataUpload(ctx, sess, du) // spec-1.3：DataUpload → Sink + 关联回触发方
+		s.handleDataUpload(ctx, sess, du) // DataUpload → 上报出口 + 关联回触发方
 	}
 	if res := f.GetCommandResult(); res != nil {
 		sess.signalCommand(res.GetCommandId(), commandResultErr(res))
 	}
 }
 
-// handleDataUpload 按 kind 把上报落到对应 Sink，并关联回触发方（spec-1.3 T11 /
-// spec-1.4 T12）。AD-3：只接受结构化载荷；未知 kind、payload 非法、落 Sink 失败
+// handleDataUpload 按 kind 把上报转给出口，并关联回触发方（spec-1.3 T11 /
+// spec-1.4 T12）。AD-3：只接受结构化载荷；未知 kind、payload 非法、上报失败
 // 都回错误码给触发方（fail-closed，绝不静默吞掉）。
 func (s *SessionServer) handleDataUpload(ctx context.Context, sess *session, du *connectorv1.DataUpload) {
 	kind := du.GetKind()
@@ -248,15 +237,15 @@ func (s *SessionServer) handleDataUpload(ctx context.Context, sess *session, du 
 		sess.signalCommand(du.GetCommandId(), errors.New("AR_METRICS_COLLECT_FAILED: decode batch"))
 		return
 	}
-	if err := s.sink.Publish(ctx, batch); err != nil {
-		s.logger.Warn("data upload sink publish failed", "connector_id", sess.connectorID, "err", err)
-		sess.signalCommand(du.GetCommandId(), errors.New("AR_METRICS_COLLECT_FAILED: sink publish"))
+	if err := s.uploader.UploadMetrics(ctx, sess.tenantID, batch); err != nil {
+		s.logger.Warn("data upload forward failed", "connector_id", sess.connectorID, "err", err)
+		sess.signalCommand(du.GetCommandId(), errors.New("AR_METRICS_COLLECT_FAILED: upload"))
 		return
 	}
 	sess.signalCommand(du.GetCommandId(), nil)
 }
 
-// handleSnapshotUpload 落快照到 SnapshotSink（spec-1.4）。
+// handleSnapshotUpload 转发快照到上报出口（spec-1.4 采集、spec-1.5 落库）。
 func (s *SessionServer) handleSnapshotUpload(
 	ctx context.Context, sess *session, du *connectorv1.DataUpload, kind string,
 ) {
@@ -268,16 +257,16 @@ func (s *SessionServer) handleSnapshotUpload(
 		return
 	}
 	if snapshot.Kind != kind {
-		// 帧头 kind 与载荷自述 kind 不一致：拒收，避免错落 Sink。
+		// 帧头 kind 与载荷自述 kind 不一致：拒收，避免错落库。
 		s.logger.Warn("snapshot kind mismatch",
 			"connector_id", sess.connectorID, "frame_kind", kind, "payload_kind", snapshot.Kind)
 		sess.signalCommand(du.GetCommandId(), errors.New("AR_SNAPSHOT_COLLECT_FAILED: kind mismatch"))
 		return
 	}
-	if err := s.snapshotSink.PublishSnapshot(ctx, snapshot); err != nil {
-		s.logger.Warn("snapshot sink publish failed",
+	if err := s.uploader.UploadSnapshot(ctx, sess.tenantID, snapshot); err != nil {
+		s.logger.Warn("snapshot forward failed",
 			"connector_id", sess.connectorID, "kind", kind, "err", err)
-		sess.signalCommand(du.GetCommandId(), errors.New("AR_SNAPSHOT_COLLECT_FAILED: sink publish"))
+		sess.signalCommand(du.GetCommandId(), errors.New("AR_SNAPSHOT_COLLECT_FAILED: upload"))
 		return
 	}
 	sess.signalCommand(du.GetCommandId(), nil)

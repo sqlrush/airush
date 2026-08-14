@@ -11,6 +11,7 @@ import (
 	"github.com/sqlrush/airush/console/internal/pki"
 	"github.com/sqlrush/airush/console/internal/repo"
 	"github.com/sqlrush/airush/libs/apierror"
+	"github.com/sqlrush/airush/libs/metrics"
 )
 
 // Server 装配内部 API。
@@ -19,6 +20,10 @@ type Server struct {
 	ca       *pki.CA
 	svcToken string
 	certTTL  certTTLConfig
+	// sink/snapshotSink 是采集数据落点（spec-1.5）。nil 表示本实例未配置落库
+	// ——上报请求显式 501 而不是假装收下（规则 6）。
+	sink         metrics.Sink
+	snapshotSink metrics.SnapshotSink
 }
 
 type certTTLConfig struct{ connectorCert int } // 天
@@ -31,6 +36,13 @@ func New(store *repo.Store, ca *pki.CA, svcToken string) *Server {
 	}
 }
 
+// WithSinks 注入采集落点（spec-1.5 D5）。分开构造是为了让 spec-1.2 既有的
+// 注册/握手路径在无落库配置时照常工作。
+func (s *Server) WithSinks(sink metrics.Sink, snapshotSink metrics.SnapshotSink) *Server {
+	s.sink, s.snapshotSink = sink, snapshotSink
+	return s
+}
+
 // Handler 返回内部 API 路由（挂载在 console 同一监听端口的 /internal/v1/ 前缀）。
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
@@ -40,6 +52,9 @@ func (s *Server) Handler() http.Handler {
 	handle("POST /internal/v1/connector-enrollments", s.enroll)
 	handle("POST /internal/v1/connector-handshakes", s.handshake)
 	handle("POST /internal/v1/connector-status", s.status)
+	// 采集数据上报（spec-1.5 D5）：gateway 收到 Connector 的 DataUpload 后转发至此。
+	handle("POST /internal/v1/collected/metrics", s.ingestMetrics)
+	handle("POST /internal/v1/collected/snapshots", s.ingestSnapshot)
 	return s.authMiddleware(mux)
 }
 

@@ -49,10 +49,10 @@ func TestConnectorEnrollmentMigration(t *testing.T) {
 		t.Fatal("bogus status accepted, want CHECK violation")
 	}
 
-	// down 1 步：列消失、超集值降级 offline
-	if err := RunWithURL(pg.ConnString, []string{"down"}); err != nil {
-		t.Fatalf("down: %v", err)
-	}
+	// 回滚到 0002（不是"down 一步"）：本用例验的是 0003 的语义，写死步数会在
+	// 每次新增迁移时退错对象——0002/0003 已固化过这条教训，本用例当时漏改，
+	// 0004 加入后第三次踩到。downTo 按 schema_migrations 实际版本判定，与迁移总数解耦。
+	downTo(t, db, pg.ConnString, 2)
 	if n := countRows(t, db, `SELECT count(*) FROM information_schema.columns
 		WHERE table_name = 'connectors' AND column_name = 'enroll_token_hash'`); n != 0 {
 		t.Fatal("enroll_token_hash still present after down")

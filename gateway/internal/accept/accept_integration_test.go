@@ -133,7 +133,7 @@ func newFixture(t *testing.T, cfg accept.SessionConfig) *fixture {
 	sink := metrics.NewBufferSink(64)
 	servers, err := accept.Build(client, accept.TLSMaterial{
 		ServerCertPEM: gwCert, ServerKeyPEM: gwKey, ClientCAPEM: ca.certPEM,
-	}, cfg, accept.Deps{Logger: testLogger(), Sink: sink, SnapshotSink: sink})
+	}, cfg, accept.Deps{Logger: testLogger(), Uploader: &testUploader{sink: sink, snapshots: sink}})
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}
@@ -620,4 +620,36 @@ func respondSnapshots(stream connectorv1.SessionService_SessionClient) {
 			},
 		}})
 	}
+}
+
+// testUploader 把 BufferSink 适配成 accept.Uploader（集成测试用）。
+// 与包内单测的 sinkUploader 同形态，但这里在 accept_test 外部包，需另立一份。
+type testUploader struct {
+	sink      metrics.Sink
+	snapshots metrics.SnapshotSink
+	mu        sync.Mutex
+	tenants   []string
+}
+
+func (u *testUploader) UploadMetrics(ctx context.Context, tenantID string, b metrics.Batch) error {
+	u.recordTenant(tenantID)
+	return u.sink.Publish(ctx, b)
+}
+
+func (u *testUploader) UploadSnapshot(ctx context.Context, tenantID string, s metrics.Snapshot) error {
+	u.recordTenant(tenantID)
+	return u.snapshots.PublishSnapshot(ctx, s)
+}
+
+func (u *testUploader) recordTenant(tenantID string) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	u.tenants = append(u.tenants, tenantID)
+}
+
+// seenTenants 返回已记录的租户（供断言 gateway 确实把证书里的租户带上了）。
+func (u *testUploader) seenTenants() []string {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return append([]string(nil), u.tenants...)
 }

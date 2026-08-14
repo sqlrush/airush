@@ -16,12 +16,9 @@ import (
 	"github.com/sqlrush/airush/console/internal/pki"
 	"github.com/sqlrush/airush/console/internal/repo"
 	"github.com/sqlrush/airush/console/internal/svcapi"
-	"github.com/sqlrush/airush/libs/metrics"
+	"github.com/sqlrush/airush/console/internal/tsstore"
 	"github.com/sqlrush/airush/libs/obs"
 )
-
-// metricsSinkCapacity 是 console 侧 Direct 采集环形 Sink 的保留批数（Stage 1 buffer）。
-const metricsSinkCapacity = 256
 
 // pkiInitMain 生成新内部 CA 并输出 PEM（运维一次性执行，产物入 k8s Secret）。
 func pkiInitMain() {
@@ -76,7 +73,7 @@ func buildDirect(cfg appConfig, store *repo.Store) (*credcrypto.Sealer, *directc
 }
 
 // buildHandler 组装路由面：公开 API（/api/v1）+ 服务间内部 API（/internal/v1）+ healthz。
-func buildHandler(cfg appConfig, store *repo.Store, sealer *credcrypto.Sealer, direct *directconn.Manager, version string) (http.Handler, error) {
+func buildHandler(cfg appConfig, store *repo.Store, sealer *credcrypto.Sealer, direct *directconn.Manager, ts *tsstore.Store, version string) (http.Handler, error) {
 	api, err := httpapi.New(store, sealer, direct, cfg.DefaultTenantID)
 	if err != nil {
 		return nil, fmt.Errorf("init httpapi: %w", err)
@@ -85,7 +82,8 @@ func buildHandler(cfg appConfig, store *repo.Store, sealer *credcrypto.Sealer, d
 	if err != nil {
 		return nil, fmt.Errorf("load connector CA: %w", err)
 	}
-	svc := svcapi.New(store, ca, cfg.SvcToken)
+	// spec-1.5 §8 Q5-A：gateway 把 Connector 上报的数据 POST 到这里，由 console 落库。
+	svc := svcapi.New(store, ca, cfg.SvcToken).WithSinks(ts, ts)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -98,16 +96,15 @@ func buildHandler(cfg appConfig, store *repo.Store, sealer *credcrypto.Sealer, d
 }
 
 // startCollector 启动指标采集调度器（spec-1.3 D3）：Direct 通道本地探针，Connector
-// 通道经 gateway 触发（GatewayURL 配置时）。ctx 取消即停。Stage 1 Sink 为内存 buffer。
-func startCollector(ctx context.Context, cfg appConfig, store *repo.Store, direct *directconn.Manager, provider *obs.Provider) {
+// 通道经 gateway 触发（GatewayURL 配置时）。ctx 取消即停。
+// 落点自 spec-1.5 起为 TimescaleDB（tsstore），替换原内存 BufferSink。
+func startCollector(ctx context.Context, cfg appConfig, store *repo.Store, direct *directconn.Manager, ts *tsstore.Store, provider *obs.Provider) {
 	var connCollector collector.ConnectorCollector
 	if cfg.GatewayURL != "" {
 		connCollector = collector.NewGatewayClient(cfg.GatewayURL, cfg.SvcToken)
 	} else {
 		provider.Logger.Info("collector: connector path disabled (no GATEWAY_URL); direct-only")
 	}
-	// 同一个 BufferSink 兼任指标与快照落点（spec-1.5 换 TimescaleDB 时分别实现）。
-	sink := metrics.NewBufferSink(metricsSinkCapacity)
 	ccfg := collector.DefaultConfig()
 	if cfg.MetricsInterval > 0 {
 		ccfg.Interval = cfg.MetricsInterval
@@ -118,7 +115,7 @@ func startCollector(ctx context.Context, cfg appConfig, store *repo.Store, direc
 	if cfg.MetaInterval > 0 {
 		ccfg.MetaInterval = cfg.MetaInterval
 	}
-	c := collector.New(store, direct, connCollector, sink, sink, ccfg, cfg.DefaultTenantID, provider.Logger)
+	c := collector.New(store, direct, connCollector, ts, ts, ccfg, cfg.DefaultTenantID, provider.Logger)
 	go c.Run(ctx)
 	provider.Logger.Info("collector started",
 		"metrics_interval", ccfg.Interval, "slowlog_interval", ccfg.SlowlogInterval,
@@ -143,13 +140,19 @@ func runServer(cfg appConfig, provider *obs.Provider, version string) error {
 	}
 	defer direct.Close()
 
-	mux, err := buildHandler(cfg, store, sealer, direct, version)
+	ts, err := tsstore.New(ctx, cfg.DBURL, cfg.TSBatchMaxRows)
+	if err != nil {
+		return fmt.Errorf("init timeseries store: %w", err)
+	}
+	defer ts.Close()
+
+	mux, err := buildHandler(cfg, store, sealer, direct, ts, version)
 	if err != nil {
 		return err
 	}
 
 	// spec-1.3：指标采集调度器（后台）；ctx 取消即停各采集循环。
-	startCollector(ctx, cfg, store, direct, provider)
+	startCollector(ctx, cfg, store, direct, ts, provider)
 
 	srv := &http.Server{
 		Addr:              cfg.Listen,
