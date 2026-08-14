@@ -177,3 +177,9 @@ FORCE + 角色分离让"绕过"必须是显式高权限操作，可审计。
 - spec-2.1：RLS 全面启用审计——盘点全部表对照白名单与模板合规性；
 - spec-0.10：Helm pre-upgrade hook 调 `console migrate up`；
 - spec-1.5：TimescaleDB 侧租户隔离策略参照本 spec 结论另行论证（超表 + RLS 兼容性）。
+
+## §11 Changelog（frozen 后追加，不重写正文）
+
+| 日期 | 变更 |
+|---|---|
+| 2026-08-14 | §10 遗留的"超表 + RLS 兼容性"已论证完毕：**互斥**——TimescaleDB 列存压缩不能用于挂 RLS 的表（`columnstore cannot be used on table with row security`，`deploy/scripts/probe-timescale-rls.sh` 实测）。设计文档 AD-10 已修订为"由数据库强制隔离"，新增等效形态（基表对应用角色零授权 + `security_barrier` 视图 + `WITH CHECK OPTION`）。**本 spec §2.2 模板不变**，仍是控制面租户表的默认且唯一形态；等效形态**仅限**指标 hypertable，由 spec-1.5 §2 逐表登记并被四项集成用例固化。§2.2 末"违反模板 = review 直接打回"据此加一条例外：等效形态表须在 spec 中显式登记，未登记者照旧打回 |
