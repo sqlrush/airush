@@ -93,7 +93,10 @@ Stage 0 → Stage 1 → Stage 2 → Stage 3 → Stage 4
 - [ ] hello-world 服务的日志/指标/trace 在本地可观测栈中可见；
 - [ ] 控制面 PG 迁移框架跑通第一个 migration。
 
-## 3. Stage 1：单租户端到端 MVP（16 个功能点，MySQL 协议族）
+## 3. Stage 1：单租户端到端 MVP（16 个功能点，**openGauss（PG 协议族）**）
+
+> 标题原写"MySQL 协议族"，是 2026-08-10 蓝本对调（MySQL→openGauss）时漏改的陈迹，
+> 2026-08-14 user 指出并更正。MVP 蓝本是 **openGauss**；MySQL 族在 Stage 3（spec-3.1）。
 
 ### 3.1 功能点清单
 
@@ -115,7 +118,7 @@ Stage 0 → Stage 1 → Stage 2 → Stage 3 → Stage 4
 | spec-1.13 | 控制台前端：数据库模块与巡检视图 | 数据库模块（列表/拓扑双视图、接入向导、主备/集群关系、Agent 管理域、节点下钻实例详情）、巡检报告展示 |
 | spec-1.14 | 控制台前端：通用对话工作台 | 通用对话窗口（诊断/问答/长任务，登录默认落地页）、内容块渲染器注册表、历史会话管理 |
 | spec-1.15 | 审计日志基线 | 全链路审计事件模型与查询界面 |
-| spec-1.16 | Stage 1 验收 | 真实 MySQL 端到端 demo + 性能/成本基线报告 |
+| spec-1.16 | Stage 1 验收 | 真实 **openGauss** 端到端 demo + 性能/成本基线报告（原写 MySQL，2026-08-14 更正） |
 
 ### 3.2 Stage 1 验收标准
 
@@ -230,5 +233,5 @@ SPEC（编码前讨论） → TDD 编码 → 集成测试 → Code Review → Re
 | spec-1.17 | **frozen · 实施完成**（T1-T10 全过；directconn 真 PG 集成；覆盖率达标）| 2026-08-11 起草、approve、实施 |
 | spec-1.3 | **frozen · 实施完成**（T1-T11 全过；一套探针两通道：Direct 本地探针+Connector DataUpload→gateway Sink；真 PG 集成；覆盖率合并口径达标 libs-metrics 94.6%/connector 84.8%/gateway 81.1%/console 82.3%；dev-verify Direct 采集心跳可见）| 2026-08-11 起草、approve；08-12 实施完成 |
 | spec-1.4 | **frozen · 实施完成**（T1-T13 全过；真 openGauss 5.0.3 校准出 dbe_perf 两处列名错 + 表结构排序错 + spec-1.3 遗留的复制延迟方言错；字面量金丝雀在真机实证；覆盖率 connector 87.3%/console 82.2%/gateway 81.5%/libs-metrics 84.7%；dev-verify ALL PASS 三类快照心跳可见）| 2026-08-12 起草并 approve；08-13 实施完成 |
-| spec-1.5 | **DRAFT — 待 user approve**（表数收敛承诺：采集侧固定 3 张表，后续加采集能力/加引擎只加编译期目录常量；AD-10 等效形态的唯一使用者，四项隔离用例为硬门槛；存储布局与隔离方案均有实测脚本支撑）| 2026-08-14 起草 |
+| spec-1.5 | **frozen · 实施中**（Q1-Q7 全采 ★；表数收敛承诺：采集侧固定 3 张表，后续加采集能力/加引擎只加编译期目录常量；AD-10 等效形态的唯一使用者，四项隔离用例为硬门槛且排实施第 1 步）| 2026-08-14 起草并 approve |
 | 其余 Stage 1 specs | 按序起草（严格事前 approve） | — |

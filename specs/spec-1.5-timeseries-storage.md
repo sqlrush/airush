@@ -1,6 +1,7 @@
 # spec-1.5 数据接入层与时序存储
 
-> **DRAFT — 待 user approve**（起草 2026-08-14）
+> **frozen** — user approve 2026-08-14（§8 Q1-Q7 **全采 ★**；新增系统服务依赖
+> TimescaleDB 扩展一并批准；无新增 Go module，无 proto 变更）
 
 ## Header / 元数据
 
@@ -27,7 +28,7 @@
 - **实测支撑**：本 spec 的存储布局与隔离方案均有实测脚本，非纸面推演——
   `deploy/scripts/probe-timescale-rls.sh`（压缩与 RLS 互斥）、
   `probe-timescale-rls2.sh`（等效隔离四项）、`probe-series-final.sh`（三种布局体积与查询代价）；
-- **决策日期**：2026-08-14，待 user approve。
+- **决策日期**：2026-08-14 起草并 approve（§8 全 ★）。
 
 ---
 
