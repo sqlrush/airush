@@ -446,20 +446,21 @@ func (q *Querier) SnapshotHistory(ctx, datasourceID, kind string, limit int) ([]
 
 ## §7 DoD
 
-- [ ] D1-D6 全部交付，迁移 `up`/`down` 均可执行且 `up→down→up` 结果一致（spec-0.6 T2 语义）；
-- [ ] **AD-10 四项隔离用例 T7-T10 全绿**——任一不过即本 spec 不可合并（硬门槛）；
-- [ ] T14 证明压缩与隔离视图共存（AD-7 与 AD-10 冲突的最终闭环验证）；
-- [ ] R1 基准：批量写入相对无视图直写退化 ≤30%，实测数据记入 spec changelog；
-- [ ] 单元测试 T1-T6、T11-T13 全绿；集成 T14-T20 全绿；端到端 T21-T22 全绿；
-- [ ] 覆盖率：`console` ≥80%、`libs/metrics` ≥80%（CLAUDE.md 规则 4 后端门槛）；
-- [ ] 两层命名落地：`libs/metrics` 内不再有裸 `pg.` 前缀的**规范类**指标（引擎特有的保留）；
-- [ ] 三个新错误码入 `proto/errors.json` 且各有触发用例（规则 4：每个错误码有触发用例）；
-- [ ] 可观测性（spec-0.9 三件套）：写入批数/行数/失败数 metric、查询延迟 histogram、
+- [x] D1-D6 全部交付，迁移 `up`/`down` 均可执行且 `up→down→up` 结果一致（spec-0.6 T2 语义）；
+- [x] **AD-10 四项隔离用例 T7-T10 全绿**——任一不过即本 spec 不可合并（硬门槛）；
+- [x] T14 证明压缩与隔离视图共存（AD-7 与 AD-10 冲突的最终闭环验证）；
+- [x] R1 基准：批量写入相对无视图直写退化 ≤30%，实测数据记入 spec changelog；
+- [x] 单元测试 T1-T6、T11-T13 全绿；集成 T14-T20 全绿；端到端 T21-T22 全绿；
+- [x] 覆盖率：`console` ≥80%、`libs/metrics` ≥80%（CLAUDE.md 规则 4 后端门槛）；
+- [x] 两层命名落地：`libs/metrics` 内不再有裸 `pg.` 前缀的**规范类**指标（引擎特有的保留）；
+- [x] 三个新错误码入 `proto/errors.json` 且各有触发用例（规则 4：每个错误码有触发用例）；
+- [x] 可观测性（spec-0.9 三件套）：写入批数/行数/失败数 metric、查询延迟 histogram、
       压缩与保留策略执行日志；
-- [ ] dev-verify ALL PASS，含 T21/T22 两条新断言；
-- [ ] Helm 部署 TimescaleDB 镜像在 kind 环境起得来，扩展就绪断言通过；
-- [ ] CI 全绿（含已接入的 openGauss 集成任务不受影响）；
-- [ ] 文档同步：spec 状态、roadmap §8 进度表、CHANGELOG、`docs/2026-08-08-airush-platform-design.md`
+- [x] dev-verify ALL PASS，含 T21/T22 两条新断言；
+- [x] Helm 部署 TimescaleDB 镜像在 kind 环境起得来，扩展就绪断言通过；
+- [ ] CI 全绿（含已接入的 openGauss 集成任务不受影响）；**← 唯一未闭项：分支尚未推送，
+      本地 Mac 上单测/集成/覆盖率/dev-verify 均已全绿**
+- [x] 文档同步：spec 状态、roadmap §8 进度表、CHANGELOG、`docs/2026-08-08-airush-platform-design.md`
       §2.5 存储矩阵补 `collected`/`tsdb` schema 说明。
 
 ---
@@ -575,4 +576,5 @@ func (q *Querier) SnapshotHistory(ctx, datasourceID, kind string, limit int) ([]
 | 2026-08-15 | **R1 基准通过，§8 Q2 选项 A（写入经隔离视图）确认落地**：20000 行 × 3 轮取最小，经 `collected.series` 视图 499ms vs 直插 `tsdb.series` 基表 471ms，**退化 5.9%**，远低于 30% 门槛。选项 B（独立 `airush_ingest` 角色 + 基表直授权）不启用——它要多一个角色和一套授权，为 6% 不值得，而基表零授权这道锁是等效隔离形态的第一道锁。基准固化为 `TestViewWriteOverheadWithinBudget`，回归即失败 |
 | 2026-08-15 | **T14 由 T7 覆盖，不另立用例**：`TestCollectedIsolation/T7` 本就先 `compress_chunk` 再断言隔离，且断言"存在已压缩 chunk"（否则该用例等于没验压缩）。T14 的原始表述"compress_chunk 后 T7 仍成立"与之逐字重合，另写一条只是复制 |
 | 2026-08-15 | **采集侧修掉一处租户上下文漏传（实现缺陷，非 spec 变更）**：`collector.collectMetricsDirect` / `collectSnapshotDirect` 建好了 `tctx` 却只喂给 probe，落点调用传的仍是无租户的 `ctx`。spec-1.3/1.4 时期落点是内存 `BufferSink`（根本不看租户），故单测与 CI 一路绿；spec-1.5 换成 tsstore 后立刻 fail-closed 成 `AR_TENANT_CONTEXT_MISSING`，采集心跳全灭。已修，并在 collector 集成用例里加 `tenantGuardSink`——每次落点调用都断言携带租户上下文，这类"内存实现掩盖真实约束"的洞不再需要接真库才发现 |
+| 2026-08-15 | **覆盖率补齐时暴露一处 trace_id 断链（顺手修）**：svcapi 的服务间认证在进入 `apierror.Middleware` **之前**就拒绝请求，直接读 `X-Trace-Id` 头，上游没带就回一个空 trace_id——恰恰是最需要能追的那条路径。`apierror` 导出 `TraceIDFrom`（无上游则自造，与 Middleware 同一套），认证出口改用它，spec-0.8 §2.2 的"trace_id 必达"在每条错误路径上都成立。补测后 console 覆盖率 78.4% → **83.3%**（svcapi/ingest.go 从 0% 到 100%，httpapi/collected.go 39% → 94%） |
 | 2026-08-15 | **观测性 label 维持 spec-0.9 §2.2 现有白名单，不为本 spec 扩充**：写入/查询指标只用 `status` + `code`；`kind`（metrics/slowlog/…）与 `layer`（raw/5m/1h）虽是低基数维度，但白名单扩充按 spec-0.9 §2.2 要动那份已 frozen 的 spec，为一个锦上添花的维度不值得。两者进结构化日志，排障照样可查。另在 `tsstore.New` 启动时读 `timescaledb_information.jobs` 把实际生效的压缩/保留/连续聚合策略打进日志——策略由迁移创建、由后台作业执行，进程内不可见，某次迁移漏掉 `add_retention_policy` 会让磁盘安静地涨到爆，这是最便宜的一道核对 |

@@ -233,5 +233,5 @@ SPEC（编码前讨论） → TDD 编码 → 集成测试 → Code Review → Re
 | spec-1.17 | **frozen · 实施完成**（T1-T10 全过；directconn 真 PG 集成；覆盖率达标）| 2026-08-11 起草、approve、实施 |
 | spec-1.3 | **frozen · 实施完成**（T1-T11 全过；一套探针两通道：Direct 本地探针+Connector DataUpload→gateway Sink；真 PG 集成；覆盖率合并口径达标 libs-metrics 94.6%/connector 84.8%/gateway 81.1%/console 82.3%；dev-verify Direct 采集心跳可见）| 2026-08-11 起草、approve；08-12 实施完成 |
 | spec-1.4 | **frozen · 实施完成**（T1-T13 全过；真 openGauss 5.0.3 校准出 dbe_perf 两处列名错 + 表结构排序错 + spec-1.3 遗留的复制延迟方言错；字面量金丝雀在真机实证；覆盖率 connector 87.3%/console 82.2%/gateway 81.5%/libs-metrics 84.7%；dev-verify ALL PASS 三类快照心跳可见）| 2026-08-12 起草并 approve；08-13 实施完成 |
-| spec-1.5 | **frozen · 实施中**（Q1-Q7 全采 ★；表数收敛承诺：采集侧固定 3 张表，后续加采集能力/加引擎只加编译期目录常量；AD-10 等效形态的唯一使用者，四项隔离用例为硬门槛且排实施第 1 步）| 2026-08-14 起草并 approve |
+| spec-1.5 | **frozen · 实施完成**（T1-T22 全过；AD-10 等效隔离四项门槛 T7-T10 全绿——其中"越权写被拒"初验时没拦住，补 `check_option` 才堵上；R1 基准经视图写入退化 **5.9%**（门槛 30%）故 §8 Q2 选项 A 落地；表数收敛承诺兑现：采集侧固定 3 张表，加采集能力/加引擎只加编译期目录常量；实施中修掉采集器租户上下文漏传（内存 Sink 掩盖了它）与 kind 冷启动两处工程缺陷；覆盖率 console 83.3%/libs-metrics 86.3%/connector 87.3%/gateway 81.0%；dev-verify ALL PASS 含 Direct 与 Connector 两通道落库）| 2026-08-14 起草并 approve；08-15 实施完成 |
 | 其余 Stage 1 specs | 按序起草（严格事前 approve） | — |

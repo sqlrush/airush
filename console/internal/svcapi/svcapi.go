@@ -64,7 +64,10 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 		got := r.Header.Get("Authorization")
 		want := "Bearer " + s.svcToken
 		if subtle.ConstantTimeCompare([]byte(got), []byte(want)) != 1 {
-			apierror.WriteError(w, r.Header.Get(apierror.TraceHeader),
+			// TraceIDFrom 而非直接读头：认证在进入 Handler 前就拒了，走不到
+			// apierror.Middleware 的自造 trace_id，直接读头会让这条错误路径
+			// 回一个空 trace_id——正是最需要能追的那条路径。
+			apierror.WriteError(w, apierror.TraceIDFrom(r),
 				apierror.New(apierror.CodeSvcUnauthenticated))
 			return
 		}
