@@ -1,6 +1,6 @@
 # spec-1.5 数据接入层与时序存储
 
-> **frozen** — user approve 2026-08-14（§8 Q1-Q7 **全采 ★**；新增系统服务依赖
+> **shipped** — user approve 2026-08-14，实施完成 + review 收口 2026-08-15（PR #27）。§8 Q1-Q7 **全采 ★**；新增系统服务依赖
 > TimescaleDB 扩展一并批准；无新增 Go module，无 proto 变更）
 
 ## Header / 元数据
@@ -458,8 +458,7 @@ func (q *Querier) SnapshotHistory(ctx, datasourceID, kind string, limit int) ([]
       压缩与保留策略执行日志；
 - [x] dev-verify ALL PASS，含 T21/T22 两条新断言；
 - [x] Helm 部署 TimescaleDB 镜像在 kind 环境起得来，扩展就绪断言通过；
-- [ ] CI 全绿（含已接入的 openGauss 集成任务不受影响）；**← 唯一未闭项：分支尚未推送，
-      本地 Mac 上单测/集成/覆盖率/dev-verify 均已全绿**
+- [x] CI 全绿（含已接入的 openGauss 集成任务不受影响）——PR #27 lint/test/build/integration/gitleaks 全 pass；
 - [x] 文档同步：spec 状态、roadmap §8 进度表、CHANGELOG、`docs/2026-08-08-airush-platform-design.md`
       §2.5 存储矩阵补 `collected`/`tsdb` schema 说明。
 
