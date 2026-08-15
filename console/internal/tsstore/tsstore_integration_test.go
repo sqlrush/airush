@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
 
@@ -130,8 +131,10 @@ func TestPublishRequiresTenantContext(t *testing.T) {
 	}
 }
 
-// TestSlowlogSnapshotExpansion spec-1.5 T2 + T18：慢查询快照展开成实体 + 5 条 series，
-// TopEntities 能按累计耗时排出来并带上 SQL 文本。
+// TestSlowlogSnapshotExpansion spec-1.5 T2：慢查询快照展开成实体 + 5 条 series，
+// 实体字典带 SQL 文本与引擎原生 ID，实体身份是内容哈希。
+// （T18 Top N 排名已随 TopEntities 一起移出本 spec，见 §11 changelog——排名要先算对
+// 累计计数器的差分，那是 spec-1.11 的活。）
 func TestSlowlogSnapshotExpansion(t *testing.T) {
 	store, ctx := fixture(t)
 	now := time.Now().UTC().Truncate(time.Second)
@@ -154,38 +157,53 @@ func TestSlowlogSnapshotExpansion(t *testing.T) {
 		t.Fatalf("publish snapshot: %v", err)
 	}
 
-	top, err := store.TopEntities(ctx, dsID, metrics.SeriesSlowlogTotalSec,
-		now.Add(-time.Hour), now.Add(time.Minute), 10)
+	// 实体字典：两条 SQL 各一个实体，label 是规范化文本，native_id 留存引擎原生标识。
+	// 经应用视角（租户事务 + airush_app）读，与生产读路径同权限。
+	type entityRow struct{ id, label, nativeID string }
+	var got []entityRow
+	err := store.inTenantTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `SELECT entity_id, label, native_id FROM collected.entities
+			WHERE datasource_id = $1 AND entity_kind = $2 ORDER BY native_id`, dsID, metrics.EntityKindQuery)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var e entityRow
+			if err := rows.Scan(&e.id, &e.label, &e.nativeID); err != nil {
+				return err
+			}
+			got = append(got, e)
+		}
+		return rows.Err()
+	})
 	if err != nil {
-		t.Fatalf("top entities: %v", err)
+		t.Fatalf("read entities: %v", err)
 	}
-	if len(top) != 2 {
-		t.Fatalf("top = %d entities, want 2", len(top))
+	if len(got) != 2 {
+		t.Fatalf("entities = %d, want 2", len(got))
 	}
-	if top[0].Label != "SELECT * FROM orders WHERE id = $1" {
-		t.Fatalf("top[0].Label = %q，排序或字典 join 有问题", top[0].Label)
+	orders := got[0]
+	if orders.nativeID != "111" || orders.label != "SELECT * FROM orders WHERE id = $1" {
+		t.Fatalf("entity[0] = %+v，label/native_id 落错", orders)
 	}
-	// 5000ms → 5s（规范层单位统一的换算点）
-	if top[0].Total != 5 {
-		t.Fatalf("top[0].Total = %v, want 5（毫秒应已换算为秒）", top[0].Total)
-	}
-	if top[0].NativeID != "111" {
-		t.Fatalf("native_id = %q, want 111（引擎原生标识应留存供排障）", top[0].NativeID)
-	}
-	// 实体 ID 是内容哈希而非引擎给的 ID
-	if top[0].EntityID == "111" {
-		t.Fatal("entity_id 用了引擎原生 ID，跨实例不可比")
+	// 实体 ID 是内容哈希而非引擎给的 ID：同一条 SQL 在主备两个实例上必须是同一个实体。
+	if orders.id == "111" || orders.id != metrics.EntityIDFor(orders.label) {
+		t.Fatalf("entity_id = %q, want sha256 前缀 %q", orders.id, metrics.EntityIDFor(orders.label))
 	}
 
-	// 5 条 series 都落了
+	// 5 条 series 都落了，且耗时类已换算成秒（5000ms → 5s，规范层单位统一的换算点）。
 	for _, decl := range metrics.SlowlogSeries {
-		pts, err := store.SeriesRange(ctx, dsID, decl.Name, top[0].EntityID,
+		pts, err := store.SeriesRange(ctx, dsID, decl.Name, orders.id,
 			now.Add(-time.Hour), now.Add(time.Minute), time.Hour)
 		if err != nil {
 			t.Fatalf("%s range: %v", decl.Name, err)
 		}
 		if len(pts) != 1 {
 			t.Fatalf("%s points = %d, want 1", decl.Name, len(pts))
+		}
+		if decl.Name == metrics.SeriesSlowlogTotalSec && pts[0].Last != 5 {
+			t.Fatalf("total_seconds = %v, want 5（毫秒应已换算为秒）", pts[0].Last)
 		}
 	}
 }

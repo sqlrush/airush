@@ -23,6 +23,7 @@ const (
 	svcAuthForTest = "svc-auth-for-test"
 	testTenantID   = "00000000-0000-0000-0000-000000000001"
 	testDSID       = "aaaaaaaa-0000-0000-0000-00000000000a"
+	testConnID     = "cccccccc-0000-0000-0000-00000000000c"
 )
 
 // recordingSink 记录落点收到的批与当时的租户上下文。
@@ -61,7 +62,26 @@ func (r *recordingSink) lastTenant() string {
 	return r.tenants[len(r.tenants)-1]
 }
 
-// post 带 svc token 发一次请求（store/ca 传 nil——上报路径不用它们）。
+// fakeOwnership 只认 (testDSID, testConnID) 这一对；其他组合按生产语义返回错误码。
+type fakeOwnership struct{ calls int }
+
+func (f *fakeOwnership) Check(_ context.Context, datasourceID, connectorID string) error {
+	f.calls++
+	if datasourceID != testDSID {
+		return apierror.New(apierror.CodeDatasourceNotFound)
+	}
+	if connectorID != testConnID {
+		return apierror.New(apierror.CodeCollectDatasourceMismatch)
+	}
+	return nil
+}
+
+// newIngestSrv 构造只带归属替身的 Server（store/ca 传 nil——上报路径不用它们）。
+func newIngestSrv() *Server {
+	return New(nil, nil, svcAuthForTest).WithOwnership(&fakeOwnership{})
+}
+
+// post 带 svc token 发一次请求。
 func post(t *testing.T, srv *Server, path, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
@@ -88,9 +108,11 @@ func wantCode(t *testing.T, rec *httptest.ResponseRecorder, status int, code api
 	}
 }
 
-func metricsBody(tenantID, dsID string) string {
+func metricsBody(tenantID, dsID string) string { return metricsBodyFor(tenantID, testConnID, dsID) }
+
+func metricsBodyFor(tenantID, connID, dsID string) string {
 	req := ingestMetricsRequest{
-		TenantID: tenantID,
+		TenantID: tenantID, ConnectorID: connID,
 		Batch: metrics.Batch{
 			DatasourceID: dsID, EngineFamily: "postgres",
 			CatalogVersion: metrics.CatalogVersion, CollectedAt: time.Now().UTC(),
@@ -106,7 +128,7 @@ func metricsBody(tenantID, dsID string) string {
 
 func snapshotBody(tenantID, dsID, kind string) string {
 	req := ingestSnapshotRequest{
-		TenantID: tenantID,
+		TenantID: tenantID, ConnectorID: testConnID,
 		Snapshot: metrics.Snapshot{
 			DatasourceID: dsID, EngineFamily: "postgres", Kind: kind,
 			CatalogVersion: metrics.CatalogVersion, CollectedAt: time.Now().UTC(),
@@ -120,7 +142,7 @@ func snapshotBody(tenantID, dsID, kind string) string {
 func TestIngestMetrics(t *testing.T) {
 	t.Run("正常收讫并带上租户上下文", func(t *testing.T) {
 		sink := &recordingSink{}
-		srv := New(nil, nil, svcAuthForTest).WithSinks(sink, sink)
+		srv := newIngestSrv().WithSinks(sink, sink)
 		rec := post(t, srv, "/internal/v1/collected/metrics", metricsBody(testTenantID, testDSID))
 		if rec.Code != http.StatusAccepted {
 			t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
@@ -136,7 +158,7 @@ func TestIngestMetrics(t *testing.T) {
 
 	t.Run("缺租户或数据源被拒", func(t *testing.T) {
 		sink := &recordingSink{}
-		srv := New(nil, nil, svcAuthForTest).WithSinks(sink, sink)
+		srv := newIngestSrv().WithSinks(sink, sink)
 		wantCode(t, post(t, srv, "/internal/v1/collected/metrics", metricsBody("", testDSID)),
 			http.StatusBadRequest, apierror.CodeValidationFailed)
 		wantCode(t, post(t, srv, "/internal/v1/collected/metrics", metricsBody(testTenantID, "")),
@@ -147,27 +169,58 @@ func TestIngestMetrics(t *testing.T) {
 	})
 
 	t.Run("坏JSON被拒", func(t *testing.T) {
-		srv := New(nil, nil, svcAuthForTest).WithSinks(&recordingSink{}, &recordingSink{})
+		srv := newIngestSrv().WithSinks(&recordingSink{}, &recordingSink{})
 		wantCode(t, post(t, srv, "/internal/v1/collected/metrics", `{"tenant_id":`),
 			http.StatusBadRequest, apierror.CodeValidationFailed)
 	})
 
+	t.Run("数据源不属于该连接器被拒", func(t *testing.T) {
+		// 租户内的数据源归属：连接器自报的 datasource_id 必须是它名下的。
+		// 被攻破的连接器不得给同租户其他数据源灌数据。
+		sink := &recordingSink{}
+		srv := newIngestSrv().WithSinks(sink, sink)
+		wantCode(t, post(t, srv, "/internal/v1/collected/metrics",
+			metricsBodyFor(testTenantID, "dddddddd-0000-0000-0000-00000000000d", testDSID)),
+			http.StatusForbidden, apierror.CodeCollectDatasourceMismatch)
+		// 数据源在本租户视图内查无 → 404（fail-closed 的另一面）
+		wantCode(t, post(t, srv, "/internal/v1/collected/metrics",
+			metricsBody(testTenantID, "eeeeeeee-0000-0000-0000-00000000000e")),
+			http.StatusNotFound, apierror.CodeDatasourceNotFound)
+		if len(sink.batches) != 0 {
+			t.Fatal("归属校验未通过的载荷仍然落到了 Sink")
+		}
+	})
+
+	t.Run("缺connector_id被拒", func(t *testing.T) {
+		srv := newIngestSrv().WithSinks(&recordingSink{}, &recordingSink{})
+		wantCode(t, post(t, srv, "/internal/v1/collected/metrics",
+			metricsBodyFor(testTenantID, "", testDSID)),
+			http.StatusBadRequest, apierror.CodeValidationFailed)
+	})
+
+	t.Run("无归属校验器时显式501", func(t *testing.T) {
+		// 没有归属校验就收数据 = 放弃这道防线；宁可 501。
+		srv := New(nil, nil, svcAuthForTest).WithSinks(&recordingSink{}, &recordingSink{})
+		wantCode(t, post(t, srv, "/internal/v1/collected/metrics", metricsBody(testTenantID, testDSID)),
+			http.StatusNotImplemented, apierror.CodeCommonNotImplemented)
+	})
+
 	t.Run("未配置落点时显式501", func(t *testing.T) {
 		// 规则 6：不能返回 202 假装收下——那样采集侧会认为数据已入库。
-		srv := New(nil, nil, svcAuthForTest)
+		srv := newIngestSrv() // 有归属校验、无落点
 		wantCode(t, post(t, srv, "/internal/v1/collected/metrics", metricsBody(testTenantID, testDSID)),
 			http.StatusNotImplemented, apierror.CodeCommonNotImplemented)
 	})
 
 	t.Run("落库失败原样冒泡", func(t *testing.T) {
 		sink := &recordingSink{err: apierror.New(apierror.CodeTimeseriesWriteFailed)}
-		srv := New(nil, nil, svcAuthForTest).WithSinks(sink, sink)
+		srv := newIngestSrv().WithSinks(sink, sink)
 		wantCode(t, post(t, srv, "/internal/v1/collected/metrics", metricsBody(testTenantID, testDSID)),
 			http.StatusInternalServerError, apierror.CodeTimeseriesWriteFailed)
 	})
 
 	t.Run("无svc token被拒", func(t *testing.T) {
-		srv := New(nil, nil, svcAuthForTest).WithSinks(&recordingSink{}, &recordingSink{})
+		srv := newIngestSrv().WithSinks(&recordingSink{}, &recordingSink{})
 		req := httptest.NewRequest(http.MethodPost, "/internal/v1/collected/metrics",
 			strings.NewReader(metricsBody(testTenantID, testDSID)))
 		rec := httptest.NewRecorder()
@@ -182,7 +235,7 @@ func TestIngestSnapshot(t *testing.T) {
 			metrics.SnapshotKindSlowlog, metrics.SnapshotKindSchema, metrics.SnapshotKindConfig,
 		} {
 			sink := &recordingSink{}
-			srv := New(nil, nil, svcAuthForTest).WithSinks(sink, sink)
+			srv := newIngestSrv().WithSinks(sink, sink)
 			rec := post(t, srv, "/internal/v1/collected/snapshots",
 				snapshotBody(testTenantID, testDSID, kind))
 			if rec.Code != http.StatusAccepted {
@@ -197,7 +250,7 @@ func TestIngestSnapshot(t *testing.T) {
 	t.Run("未知kind在此处也拒一次", func(t *testing.T) {
 		// AD-9 双侧校验：tsstore 侧还有一道，但入口先拒能少一次无谓的事务。
 		sink := &recordingSink{}
-		srv := New(nil, nil, svcAuthForTest).WithSinks(sink, sink)
+		srv := newIngestSrv().WithSinks(sink, sink)
 		wantCode(t, post(t, srv, "/internal/v1/collected/snapshots",
 			snapshotBody(testTenantID, testDSID, "bogus")),
 			http.StatusBadRequest, apierror.CodeCollectUnsupportedKind)
@@ -207,20 +260,20 @@ func TestIngestSnapshot(t *testing.T) {
 	})
 
 	t.Run("缺租户或数据源被拒", func(t *testing.T) {
-		srv := New(nil, nil, svcAuthForTest).WithSinks(&recordingSink{}, &recordingSink{})
+		srv := newIngestSrv().WithSinks(&recordingSink{}, &recordingSink{})
 		wantCode(t, post(t, srv, "/internal/v1/collected/snapshots",
 			snapshotBody("", testDSID, metrics.SnapshotKindSchema)),
 			http.StatusBadRequest, apierror.CodeValidationFailed)
 	})
 
 	t.Run("坏JSON被拒", func(t *testing.T) {
-		srv := New(nil, nil, svcAuthForTest).WithSinks(&recordingSink{}, &recordingSink{})
+		srv := newIngestSrv().WithSinks(&recordingSink{}, &recordingSink{})
 		wantCode(t, post(t, srv, "/internal/v1/collected/snapshots", `{`),
 			http.StatusBadRequest, apierror.CodeValidationFailed)
 	})
 
 	t.Run("未配置落点时显式501", func(t *testing.T) {
-		srv := New(nil, nil, svcAuthForTest)
+		srv := newIngestSrv() // 有归属校验、无落点
 		wantCode(t, post(t, srv, "/internal/v1/collected/snapshots",
 			snapshotBody(testTenantID, testDSID, metrics.SnapshotKindSchema)),
 			http.StatusNotImplemented, apierror.CodeCommonNotImplemented)
@@ -228,7 +281,7 @@ func TestIngestSnapshot(t *testing.T) {
 
 	t.Run("落库失败原样冒泡", func(t *testing.T) {
 		sink := &recordingSink{err: apierror.New(apierror.CodeTimeseriesWriteFailed)}
-		srv := New(nil, nil, svcAuthForTest).WithSinks(sink, sink)
+		srv := newIngestSrv().WithSinks(sink, sink)
 		wantCode(t, post(t, srv, "/internal/v1/collected/snapshots",
 			snapshotBody(testTenantID, testDSID, metrics.SnapshotKindSchema)),
 			http.StatusInternalServerError, apierror.CodeTimeseriesWriteFailed)

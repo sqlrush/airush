@@ -93,14 +93,14 @@ func TestParseStep(t *testing.T) {
 }
 
 func TestParseLimit(t *testing.T) {
-	if n, err := parseLimit("", defaultTopN, maxTopN); err != nil || n != defaultTopN {
+	if n, err := parseLimit("", 20, 200); err != nil || n != 20 {
 		t.Fatalf("缺省 limit = %d, %v", n, err)
 	}
-	if n, err := parseLimit("25", defaultTopN, maxTopN); err != nil || n != 25 {
+	if n, err := parseLimit("25", 20, 200); err != nil || n != 25 {
 		t.Fatalf("limit=25 → %d, %v", n, err)
 	}
 	for _, bad := range []string{"0", "-3", "abc", "201"} {
-		if _, err := parseLimit(bad, defaultTopN, maxTopN); err == nil {
+		if _, err := parseLimit(bad, 20, 200); err == nil {
 			t.Fatalf("limit=%q 未被拒绝", bad)
 		}
 	}

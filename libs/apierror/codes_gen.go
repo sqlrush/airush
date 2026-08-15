@@ -39,6 +39,7 @@ const (
 	CodeTimeseriesWriteFailed Code = "AR_TIMESERIES_WRITE_FAILED"
 	CodeTimeseriesQueryFailed Code = "AR_TIMESERIES_QUERY_FAILED"
 	CodeTimeseriesUndeclaredSeries Code = "AR_TIMESERIES_UNDECLARED_SERIES"
+	CodeCollectDatasourceMismatch Code = "AR_COLLECT_DATASOURCE_MISMATCH"
 )
 
 var codeMeta = map[Code]Meta{
@@ -77,4 +78,5 @@ var codeMeta = map[Code]Meta{
 	CodeTimeseriesWriteFailed: {Level: "E4", HTTP: 500, Message: "服务内部错误", Deprecated: false},
 	CodeTimeseriesQueryFailed: {Level: "E4", HTTP: 500, Message: "服务内部错误", Deprecated: false},
 	CodeTimeseriesUndeclaredSeries: {Level: "E4", HTTP: 500, Message: "服务内部错误", Deprecated: false},
+	CodeCollectDatasourceMismatch: {Level: "E2", HTTP: 403, Message: "上报的数据源不属于该连接器", Deprecated: false},
 }

@@ -114,15 +114,15 @@ func parseAPIError(status int, body []byte) error {
 //
 // tenantID 由调用方从 Connector 的 mTLS 证书 SAN 解析后显式传入——不走 context 夹带。
 // gateway 是多租户中继，租户是这个操作的一等参数，藏进 ctx 只会让越权更难被看出来。
-func (c *Client) UploadMetrics(ctx context.Context, tenantID string, batch metrics.Batch) error {
+func (c *Client) UploadMetrics(ctx context.Context, tenantID, connectorID string, batch metrics.Batch) error {
 	return c.post(ctx, "/internal/v1/collected/metrics", map[string]any{
-		"tenant_id": tenantID, "batch": batch,
+		"tenant_id": tenantID, "connector_id": connectorID, "batch": batch,
 	}, nil)
 }
 
 // UploadSnapshot 把 Connector 上报的快照转发给 console 落库。
-func (c *Client) UploadSnapshot(ctx context.Context, tenantID string, snap metrics.Snapshot) error {
+func (c *Client) UploadSnapshot(ctx context.Context, tenantID, connectorID string, snap metrics.Snapshot) error {
 	return c.post(ctx, "/internal/v1/collected/snapshots", map[string]any{
-		"tenant_id": tenantID, "snapshot": snap,
+		"tenant_id": tenantID, "connector_id": connectorID, "snapshot": snap,
 	}, nil)
 }

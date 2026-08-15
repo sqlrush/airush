@@ -23,16 +23,6 @@ type Point struct {
 	Samples int64     `json:"samples"`
 }
 
-// RankedEntity 是 Top N 查询的一行：实体 + 该 series 在窗口内的合计。
-type RankedEntity struct {
-	EntityID    string    `json:"entity_id"`
-	Label       string    `json:"label"`
-	NativeID    string    `json:"native_id,omitempty"`
-	Total       float64   `json:"total"`
-	FirstSeenAt time.Time `json:"first_seen_at"`
-	LastSeenAt  time.Time `json:"last_seen_at"`
-}
-
 // SnapshotMeta 是快照的元信息（不含 payload——列表场景不该拖着 512KB 走）。
 type SnapshotMeta struct {
 	ID                string     `json:"id"`
@@ -152,59 +142,6 @@ func scanPoints(rows pgx.Rows) ([]Point, error) {
 		points = append(points, p)
 	}
 	return points, rows.Err()
-}
-
-// TopEntities 按某条 series 在窗口内的合计排序取前 N，带出实体标签。
-// 慢查询分析（spec-1.11）的主查询路径。
-func (s *Store) TopEntities(ctx context.Context, datasourceID, seriesName string,
-	from, to time.Time, n int,
-) (_ []RankedEntity, err error) {
-	start := time.Now()
-	defer func() { observeQuery(ctx, start, err) }()
-
-	if n <= 0 {
-		n = 10
-	}
-	// 先在读数上聚合取前 N，再 join 字典——反过来会把窗口内全部读数行都带上字典
-	// 再聚合，实测慢 25 倍以上（0.2ms → 5.3ms）。
-	const sql = `
-		WITH top AS (
-			SELECT entity_id, sum(value) AS total
-			  FROM collected.series
-			 WHERE datasource_id = $1 AND series_name = $2 AND at >= $3 AND at < $4
-			   AND entity_id <> ''
-			 GROUP BY entity_id ORDER BY total DESC LIMIT $5
-		)
-		SELECT t.entity_id, COALESCE(e.label, ''), COALESCE(e.native_id, ''), t.total,
-		       COALESCE(e.first_seen_at, 'epoch'::timestamptz),
-		       COALESCE(e.last_seen_at, 'epoch'::timestamptz)
-		  FROM top t
-		  LEFT JOIN collected.entities e
-		         ON e.datasource_id = $1 AND e.entity_kind = $6 AND e.entity_id = t.entity_id
-		 ORDER BY t.total DESC`
-
-	var out []RankedEntity
-	err = s.inTenantTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		rows, err := tx.Query(ctx, sql, datasourceID, seriesName, from, to, n, metrics.EntityKindQuery)
-		if err != nil {
-			return fmt.Errorf("query top entities: %w", err)
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var e RankedEntity
-			if err := rows.Scan(&e.EntityID, &e.Label, &e.NativeID, &e.Total,
-				&e.FirstSeenAt, &e.LastSeenAt); err != nil {
-				return fmt.Errorf("scan ranked entity: %w", err)
-			}
-			out = append(out, e)
-		}
-		return rows.Err()
-	})
-	if err != nil {
-		err = apierror.Wrap(apierror.CodeTimeseriesQueryFailed, err)
-		return nil, err
-	}
-	return out, nil
 }
 
 // LatestSnapshot 取某数据源某 kind 的当前版本（含 payload）。

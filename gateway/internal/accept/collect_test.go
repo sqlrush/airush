@@ -24,7 +24,7 @@ type sinkUploader struct {
 	tenants   []string
 }
 
-func (u *sinkUploader) UploadMetrics(ctx context.Context, tenantID string, b metrics.Batch) error {
+func (u *sinkUploader) UploadMetrics(ctx context.Context, tenantID, _ string, b metrics.Batch) error {
 	u.tenants = append(u.tenants, tenantID)
 	if u.sink == nil {
 		return nil
@@ -32,7 +32,7 @@ func (u *sinkUploader) UploadMetrics(ctx context.Context, tenantID string, b met
 	return u.sink.Publish(ctx, b)
 }
 
-func (u *sinkUploader) UploadSnapshot(ctx context.Context, tenantID string, s metrics.Snapshot) error {
+func (u *sinkUploader) UploadSnapshot(ctx context.Context, tenantID, _ string, s metrics.Snapshot) error {
 	u.tenants = append(u.tenants, tenantID)
 	if u.snapshots == nil {
 		return nil

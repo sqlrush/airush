@@ -36,6 +36,7 @@
     { "code": "AR_COLLECT_UNSUPPORTED_KIND", "level": "E4", "http": 400, "message": "不支持的采集类型", "description": "spec-1.4：采集 kind 不在白名单（AD-9 显式拒绝面）；平台入口与连接器两侧均校验" },
     { "code": "AR_TIMESERIES_WRITE_FAILED", "level": "E4", "http": 500, "message": "服务内部错误", "description": "spec-1.5：采集数据落库失败（写事务/约束/连接）。对用户不暴露存储细节，细节进日志" },
     { "code": "AR_TIMESERIES_QUERY_FAILED", "level": "E4", "http": 500, "message": "服务内部错误", "description": "spec-1.5：采集数据查询失败（查询面/连续聚合选层）" },
-    { "code": "AR_TIMESERIES_UNDECLARED_SERIES", "level": "E4", "http": 500, "message": "服务内部错误", "description": "spec-1.5：待落库读数的 series 名未在编译期目录声明，或携带未声明的实体维度。AD-3 防线——泛化后 entity_id 是任意文本的口子，只有目录声明能关上它；显式拒绝不静默丢弃（规则 6）" }
+    { "code": "AR_TIMESERIES_UNDECLARED_SERIES", "level": "E4", "http": 500, "message": "服务内部错误", "description": "spec-1.5：待落库读数的 series 名未在编译期目录声明，或携带未声明的实体维度。AD-3 防线——泛化后 entity_id 是任意文本的口子，只有目录声明能关上它；显式拒绝不静默丢弃（规则 6）" },
+    { "code": "AR_COLLECT_DATASOURCE_MISMATCH", "level": "E2", "http": 403, "message": "上报的数据源不属于该连接器", "description": "spec-1.5 review 补：Connector 通道上报的 datasource_id 须为本租户内 connect_mode=connector 且 connector_id 等于上报连接器的数据源；否则拒收。租户边界由 mTLS 证书 + check_option 保证，本码守的是租户内数据源归属——被攻破的连接器不得给同租户其他数据源灌数据。此码激增 = 连接器可疑" }
   ]
 }

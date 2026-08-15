@@ -24,7 +24,6 @@ const (
 // fakeCollected 是 CollectedReader 的替身，可注入返回值与错误。
 type fakeCollected struct {
 	points   []tsstore.Point
-	entities []tsstore.RankedEntity
 	snapshot *tsstore.SnapshotWithPayload
 	history  []tsstore.SnapshotMeta
 	err      error
@@ -34,12 +33,6 @@ func (f *fakeCollected) SeriesRange(_ context.Context, _, _, _ string,
 	_, _ time.Time, _ time.Duration,
 ) ([]tsstore.Point, error) {
 	return f.points, f.err
-}
-
-func (f *fakeCollected) TopEntities(_ context.Context, _, _ string,
-	_, _ time.Time, _ int,
-) ([]tsstore.RankedEntity, error) {
-	return f.entities, f.err
 }
 
 func (f *fakeCollected) LatestSnapshot(_ context.Context, _, _ string) (*tsstore.SnapshotWithPayload, error) {
@@ -156,35 +149,16 @@ func TestSeriesRangeHandler(t *testing.T) {
 	})
 }
 
-func TestTopEntitiesHandler(t *testing.T) {
-	reader := &fakeCollected{entities: []tsstore.RankedEntity{
-		{EntityID: "e1", Label: "SELECT 1", Total: 5},
-	}}
-	h := newTestHandler(t, reader)
+// TestTopEntitiesExplicitlyUnimplemented：排名端点在 spec-1.11 前必须是**明确的 501**，
+// 不是 404（"没这个接口"）也不是 200 + 错数。即使配置了落点也一样。
+func TestTopEntitiesExplicitlyUnimplemented(t *testing.T) {
+	h := newTestHandler(t, &fakeCollected{})
+	rec := do(t, h, "/api/v1/datasources/"+testDSID+"/top-entities?name=db.slowlog.total_seconds")
+	wantErrCode(t, rec, http.StatusNotImplemented, apierror.CodeCommonNotImplemented)
 
-	t.Run("正常返回排名", func(t *testing.T) {
-		rec := do(t, h, "/api/v1/datasources/"+testDSID+"/top-entities?name=db.slowlog.total_seconds&limit=5")
-		if rec.Code != http.StatusOK {
-			t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
-		}
-	})
-
-	t.Run("无实体维度的series被拒", func(t *testing.T) {
-		// 对没有实体维度的指标排 Top N 是问错了问题——显式拒绝而不是回空数组。
-		rec := do(t, h, "/api/v1/datasources/"+testDSID+"/top-entities?name=db.connections.active")
-		wantErrCode(t, rec, http.StatusBadRequest, apierror.CodeValidationFailed)
-	})
-
-	t.Run("limit越界被拒", func(t *testing.T) {
-		rec := do(t, h, "/api/v1/datasources/"+testDSID+"/top-entities?name=db.slowlog.total_seconds&limit=9999")
-		wantErrCode(t, rec, http.StatusBadRequest, apierror.CodeValidationFailed)
-	})
-
-	t.Run("未配置落点时显式501", func(t *testing.T) {
-		rec := do(t, newTestHandler(t, nil),
-			"/api/v1/datasources/"+testDSID+"/top-entities?name=db.slowlog.total_seconds")
-		wantErrCode(t, rec, http.StatusNotImplemented, apierror.CodeCommonNotImplemented)
-	})
+	// 路径参数校验仍在前面：坏 UUID 是 400 而不是 501，别让"未实现"吞掉输入错误。
+	rec = do(t, h, "/api/v1/datasources/not-a-uuid/top-entities")
+	wantErrCode(t, rec, http.StatusBadRequest, apierror.CodeValidationFailed)
 }
 
 func TestSnapshotHandlers(t *testing.T) {
@@ -243,12 +217,4 @@ func TestSnapshotHandlers(t *testing.T) {
 		wantErrCode(t, do(t, badH, "/api/v1/datasources/"+testDSID+"/snapshots/schema/history"),
 			http.StatusInternalServerError, apierror.CodeTimeseriesQueryFailed)
 	})
-}
-
-// TestTopEntitiesStorageError 单列：TopEntities 的错误路径与 SeriesRange 不共用分支。
-func TestTopEntitiesStorageError(t *testing.T) {
-	bad := &fakeCollected{err: apierror.New(apierror.CodeTimeseriesQueryFailed)}
-	rec := do(t, newTestHandler(t, bad),
-		"/api/v1/datasources/"+testDSID+"/top-entities?name=db.slowlog.total_seconds")
-	wantErrCode(t, rec, http.StatusInternalServerError, apierror.CodeTimeseriesQueryFailed)
 }

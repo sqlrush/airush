@@ -23,7 +23,7 @@
     引擎差异在采集侧消化；Stage 3 接 MySQL/达梦只加编译期目录常量，不加表、不改 schema；
   - 写入经隔离视图（R1 基准实测退化 5.9%，门槛 30%）；gateway 仍**不持有 DB 连接**，
     Connector 上报经 console 内部 API 落库（爆炸半径不扩大）；
-  - console 新增采集数据查询面（series 区间 / Top N 实体 / 快照当前版本与版本链），
+  - console 新增采集数据查询面（series 区间 / 快照当前版本与版本链；Top N 排名端点显式 501，留给 spec-1.11——累计计数器需查询侧差分，属慢查询分析 skill），
     带窗口与点数护栏；新错误码 AR_TIMESERIES_WRITE_FAILED/QUERY_FAILED/UNDECLARED_SERIES。
 - 慢日志与元数据采集（spec-1.4，AD-3/AD-9）：复用探针框架的第二类采集——**快照**（行结构数据）：
   - libs/metrics：`Snapshot` 信封 + SlowQueryEntry/TableInfo/ConfigEntry 强类型条目 + 三类

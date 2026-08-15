@@ -20,17 +20,20 @@ import (
 // 代价是多一跳，且 console 成为写入路径的单点（可水平扩容缓解）。
 
 // ingestMetricsRequest 是 gateway 转发的指标批。
-// tenant_id 由 gateway 从 Connector 的 mTLS 证书 SAN 解析后带上——
-// 与 enroll/handshake 同一信任基础。
+// tenant_id / connector_id 由 gateway 从 Connector 的 mTLS 证书 SAN 与会话解析后带上——
+// 与 enroll/handshake 同一信任基础。datasource_id 在 batch 里，是连接器**自报**的，
+// 因而要过归属校验（ownership.go）。
 type ingestMetricsRequest struct {
-	TenantID string        `json:"tenant_id"`
-	Batch    metrics.Batch `json:"batch"`
+	TenantID    string        `json:"tenant_id"`
+	ConnectorID string        `json:"connector_id"`
+	Batch       metrics.Batch `json:"batch"`
 }
 
 // ingestSnapshotRequest 是 gateway 转发的快照。
 type ingestSnapshotRequest struct {
-	TenantID string           `json:"tenant_id"`
-	Snapshot metrics.Snapshot `json:"snapshot"`
+	TenantID    string           `json:"tenant_id"`
+	ConnectorID string           `json:"connector_id"`
+	Snapshot    metrics.Snapshot `json:"snapshot"`
 }
 
 func (s *Server) ingestMetrics(w http.ResponseWriter, r *http.Request) error {
@@ -38,15 +41,18 @@ func (s *Server) ingestMetrics(w http.ResponseWriter, r *http.Request) error {
 	if err := decodeJSON(r, &req); err != nil {
 		return err
 	}
-	if req.TenantID == "" || req.Batch.DatasourceID == "" {
+	if req.TenantID == "" || req.ConnectorID == "" || req.Batch.DatasourceID == "" {
 		return apierror.New(apierror.CodeValidationFailed).WithDetails(
-			apierror.Detail{Field: "tenant_id/batch.datasource_id", Reason: "必填"})
+			apierror.Detail{Field: "tenant_id/connector_id/batch.datasource_id", Reason: "必填"})
 	}
-	if s.sink == nil {
-		// 规则 6：未配置落点时显式拒绝，不假装收下（否则采集侧会以为数据已存）。
+	if s.sink == nil || s.ownership == nil {
+		// 规则 6：未配置落点或归属校验时显式拒绝，不假装收下（否则采集侧会以为数据已存）。
 		return apierror.New(apierror.CodeCommonNotImplemented)
 	}
 	ctx := tenancy.WithTenant(r.Context(), req.TenantID)
+	if err := s.ownership.Check(ctx, req.Batch.DatasourceID, req.ConnectorID); err != nil {
+		return err
+	}
 	if err := s.sink.Publish(ctx, req.Batch); err != nil {
 		return err
 	}
@@ -59,18 +65,21 @@ func (s *Server) ingestSnapshot(w http.ResponseWriter, r *http.Request) error {
 	if err := decodeJSON(r, &req); err != nil {
 		return err
 	}
-	if req.TenantID == "" || req.Snapshot.DatasourceID == "" {
+	if req.TenantID == "" || req.ConnectorID == "" || req.Snapshot.DatasourceID == "" {
 		return apierror.New(apierror.CodeValidationFailed).WithDetails(
-			apierror.Detail{Field: "tenant_id/snapshot.datasource_id", Reason: "必填"})
+			apierror.Detail{Field: "tenant_id/connector_id/snapshot.datasource_id", Reason: "必填"})
 	}
 	// kind 白名单在此处也校验一次（AD-9 双侧校验；tsstore 侧还有一道）。
 	if !metrics.ValidSnapshotKind(req.Snapshot.Kind) {
 		return apierror.New(apierror.CodeCollectUnsupportedKind)
 	}
-	if s.snapshotSink == nil {
+	if s.snapshotSink == nil || s.ownership == nil {
 		return apierror.New(apierror.CodeCommonNotImplemented)
 	}
 	ctx := tenancy.WithTenant(r.Context(), req.TenantID)
+	if err := s.ownership.Check(ctx, req.Snapshot.DatasourceID, req.ConnectorID); err != nil {
+		return err
+	}
 	if err := s.snapshotSink.PublishSnapshot(ctx, req.Snapshot); err != nil {
 		return err
 	}

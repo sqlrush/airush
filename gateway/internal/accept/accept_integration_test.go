@@ -631,12 +631,12 @@ type testUploader struct {
 	tenants   []string
 }
 
-func (u *testUploader) UploadMetrics(ctx context.Context, tenantID string, b metrics.Batch) error {
+func (u *testUploader) UploadMetrics(ctx context.Context, tenantID, _ string, b metrics.Batch) error {
 	u.recordTenant(tenantID)
 	return u.sink.Publish(ctx, b)
 }
 
-func (u *testUploader) UploadSnapshot(ctx context.Context, tenantID string, s metrics.Snapshot) error {
+func (u *testUploader) UploadSnapshot(ctx context.Context, tenantID, _ string, s metrics.Snapshot) error {
 	u.recordTenant(tenantID)
 	return u.snapshots.PublishSnapshot(ctx, s)
 }

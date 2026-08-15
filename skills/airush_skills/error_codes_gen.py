@@ -36,4 +36,5 @@ ERROR_CODES: dict[str, dict[str, object]] = {
     "AR_TIMESERIES_WRITE_FAILED": {"level": "E4", "http": 500, "message": "服务内部错误", "deprecated": False},
     "AR_TIMESERIES_QUERY_FAILED": {"level": "E4", "http": 500, "message": "服务内部错误", "deprecated": False},
     "AR_TIMESERIES_UNDECLARED_SERIES": {"level": "E4", "http": 500, "message": "服务内部错误", "deprecated": False},
+    "AR_COLLECT_DATASOURCE_MISMATCH": {"level": "E2", "http": 403, "message": "上报的数据源不属于该连接器", "deprecated": False},
 }

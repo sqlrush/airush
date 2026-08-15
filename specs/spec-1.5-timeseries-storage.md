@@ -393,7 +393,7 @@ func (q *Querier) SnapshotHistory(ctx, datasourceID, kind string, limit int) ([]
 | T15 | 连续聚合 5m/1h 数值与原始点聚合一致 | 聚合正确性 |
 | T16 | real-time aggregation：刚写入未物化的点可被 5m 视图查到 | 无数据缺口 |
 | T17 | `SeriesRange` 按 range 自动选层（14d/90d/400d 三档） | 读路径选层 |
-| T18 | `TopEntities` 返回带 label 的 Top N，与手工聚合一致 | 慢查询主查询路径 |
+| T18 | ~~`TopEntities` 返回带 label 的 Top N，与手工聚合一致~~ **移交 spec-1.11**（2026-08-15 review：累计计数器需差分 + 目录 Kind，见 §11）；本 spec 端点显式 501 有用例 | 慢查询主查询路径 |
 | T19 | 保留策略：`drop_chunks` 后 entities/snapshots 不受影响 | 保留期边界 |
 | T20 | 数据源删除 → 其 entities/snapshots 级联清理 | FK 语义 |
 
@@ -453,7 +453,7 @@ func (q *Querier) SnapshotHistory(ctx, datasourceID, kind string, limit int) ([]
 - [x] 单元测试 T1-T6、T11-T13 全绿；集成 T14-T20 全绿；端到端 T21-T22 全绿；
 - [x] 覆盖率：`console` ≥80%、`libs/metrics` ≥80%（CLAUDE.md 规则 4 后端门槛）；
 - [x] 两层命名落地：`libs/metrics` 内不再有裸 `pg.` 前缀的**规范类**指标（引擎特有的保留）；
-- [x] 三个新错误码入 `proto/errors.json` 且各有触发用例（规则 4：每个错误码有触发用例）；
+- [x] 三个新错误码入 `proto/errors.json` 且各有触发用例（规则 4：每个错误码有触发用例）；review 追加第 4 个 `AR_COLLECT_DATASOURCE_MISMATCH`，同样有替身单测 + 真库集成用例；
 - [x] 可观测性（spec-0.9 三件套）：写入批数/行数/失败数 metric、查询延迟 histogram、
       压缩与保留策略执行日志；
 - [x] dev-verify ALL PASS，含 T21/T22 两条新断言；
@@ -577,4 +577,6 @@ func (q *Querier) SnapshotHistory(ctx, datasourceID, kind string, limit int) ([]
 | 2026-08-15 | **T14 由 T7 覆盖，不另立用例**：`TestCollectedIsolation/T7` 本就先 `compress_chunk` 再断言隔离，且断言"存在已压缩 chunk"（否则该用例等于没验压缩）。T14 的原始表述"compress_chunk 后 T7 仍成立"与之逐字重合，另写一条只是复制 |
 | 2026-08-15 | **采集侧修掉一处租户上下文漏传（实现缺陷，非 spec 变更）**：`collector.collectMetricsDirect` / `collectSnapshotDirect` 建好了 `tctx` 却只喂给 probe，落点调用传的仍是无租户的 `ctx`。spec-1.3/1.4 时期落点是内存 `BufferSink`（根本不看租户），故单测与 CI 一路绿；spec-1.5 换成 tsstore 后立刻 fail-closed 成 `AR_TENANT_CONTEXT_MISSING`，采集心跳全灭。已修，并在 collector 集成用例里加 `tenantGuardSink`——每次落点调用都断言携带租户上下文，这类"内存实现掩盖真实约束"的洞不再需要接真库才发现 |
 | 2026-08-15 | **覆盖率补齐时暴露一处 trace_id 断链（顺手修）**：svcapi 的服务间认证在进入 `apierror.Middleware` **之前**就拒绝请求，直接读 `X-Trace-Id` 头，上游没带就回一个空 trace_id——恰恰是最需要能追的那条路径。`apierror` 导出 `TraceIDFrom`（无上游则自造，与 Middleware 同一套），认证出口改用它，spec-0.8 §2.2 的"trace_id 必达"在每条错误路径上都成立。补测后 console 覆盖率 78.4% → **83.3%**（svcapi/ingest.go 从 0% 到 100%，httpapi/collected.go 39% → 94%） |
+| 2026-08-15 | **Code review：`TopEntities` / `/top-entities` 移出本 spec，改为显式 501，T18 随之移交 spec-1.11**。首版对累计计数器直接 `sum(value)`——慢查询统计每 5 分钟采一次，1 小时窗口 12 个样本，`Total` = 12 × 自实例启动以来的累计值，排名按"生命周期累计"排：上个月很重、今天没跑的 SQL 永远第一。T18 用例每实体只有 1 个样本，断言过了，属"绿但错"。**根因是 spec 层盲区**：§8 Q1 ★ 定"存累计原值、查询侧用 `counter_agg` 差分"，但 `counter_agg` 在 TimescaleDB Toolkit 里，本 spec 选的 `timescale/timescaledb` 镜像**不含** Toolkit（在 `timescaledb-ha` 里）；且目录没有任何字段区分 counter/gauge（`db.transactions.commit_total` 是计数器、`db.connections.active` 是 gauge），读路径无从判断。**算对它是 spec-1.11（慢查询分析 skill）的活，不属于落库层**（user 2026-08-15 定：聚焦 agent 框架，skill 具体功能不展开），故按规则 6"要么完整实现要么显式拒绝"移出。**留给 spec-1.11 的账**：① `CatalogEntry` 加 `Kind: counter/gauge`；② 计数器窗口增量 = Σ max(v−prev, 0)（重启回绕按新值计），gauge 用 avg/last；③ 排名也要按窗口起点选层（首版永远查 raw 层，>14 天窗口静默截断），聚合层需 `first_value` 列（改 0004 或补 0005）；④ 若要用 Toolkit 走 `counter_agg`，须按规则 5 硬门槛 #4 单独批镜像换 `timescaledb-ha`。`SeriesRange` 保留：它返回原始桶聚合，对计数器画图由消费方按 Kind 决定 rate 或原值（spec-1.13 消费时一并处理）。存储层不动——慢查询统计照常落 `tsdb.series` + `collected.entities`（T2 仍验实体字典与 5 条 series） |
+| 2026-08-15 | **Code review：Connector 通道上报补「数据源归属」校验（fail-closed，新错误码 `AR_COLLECT_DATASOURCE_MISMATCH`）**。原实现里租户边界成立（tenant 来自 mTLS 证书 SAN，越权写被 `check_option` 拦），但 `batch.DatasourceID` 是连接器**自报**的：gateway 不核对它是否等于触发指令的数据源，console 也不核对该数据源的 `connector_id`——被攻破的连接器可以在**同租户内**往别的数据源（含 direct 数据源）灌假数据，污染日后 agent 诊断依据，且"数据是对的、只是从哪来的不对"在租户视角最难察觉。修法：内部上报请求（`/internal/v1/collected/*`）增 `connector_id`（gateway 从会话取，与 tenant 同信任基础），console 在租户事务里查 `datasources` 表：`connect_mode='connector' AND connector_id = 上报连接器`，否则 403；数据源查无 404；无归属校验器时 501（没有这道防线就收数据 = 放弃它）。**由数据库回答归属**（RLS 视图内查表），不是 gateway 内存比对。内部 API 未 shipped，不构成契约变更；错误码是本 spec 第 4 个新码，超出 §7 DoD 所列 3 个，各有触发用例（单测替身 + 真库集成） |
 | 2026-08-15 | **观测性 label 维持 spec-0.9 §2.2 现有白名单，不为本 spec 扩充**：写入/查询指标只用 `status` + `code`；`kind`（metrics/slowlog/…）与 `layer`（raw/5m/1h）虽是低基数维度，但白名单扩充按 spec-0.9 §2.2 要动那份已 frozen 的 spec，为一个锦上添花的维度不值得。两者进结构化日志，排障照样可查。另在 `tsstore.New` 启动时读 `timescaledb_information.jobs` 把实际生效的压缩/保留/连续聚合策略打进日志——策略由迁移创建、由后台作业执行，进程内不可见，某次迁移漏掉 `add_retention_policy` 会让磁盘安静地涨到爆，这是最便宜的一道核对 |

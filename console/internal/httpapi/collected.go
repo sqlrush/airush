@@ -17,8 +17,6 @@ import (
 type CollectedReader interface {
 	SeriesRange(ctx context.Context, datasourceID, seriesName, entityID string,
 		from, to time.Time, step time.Duration) ([]tsstore.Point, error)
-	TopEntities(ctx context.Context, datasourceID, seriesName string,
-		from, to time.Time, n int) ([]tsstore.RankedEntity, error)
 	LatestSnapshot(ctx context.Context, datasourceID, kind string) (*tsstore.SnapshotWithPayload, error)
 	SnapshotHistory(ctx context.Context, datasourceID, kind string, limit int) ([]tsstore.SnapshotMeta, error)
 }
@@ -29,8 +27,6 @@ const (
 	maxQueryWindow = 400 * 24 * time.Hour // = 1h 层保留期，再长也没有数据
 	minQueryStep   = time.Second
 	maxQueryPoints = 5000
-	defaultTopN    = 10
-	maxTopN        = 200
 )
 
 // seriesRange GET /api/v1/datasources/{id}/series?name=&entity=&from=&to=&step=
@@ -71,42 +67,18 @@ func (s *Server) seriesRange(w http.ResponseWriter, r *http.Request) error {
 	})
 }
 
-// topEntities GET /api/v1/datasources/{id}/top-entities?name=&from=&to=&limit=
-func (s *Server) topEntities(w http.ResponseWriter, r *http.Request) error {
-	dsID, err := pathUUID(r, "id")
-	if err != nil {
+// topEntities GET /api/v1/datasources/{id}/top-entities —— **显式未实现**（规则 6）。
+//
+// 首版实现对累计计数器直接 sum(value)，排出来的是"生命周期累计 × 样本数"，
+// 上个月很重、今天没跑的 SQL 永远第一。算对它需要目录声明 counter/gauge 语义 +
+// 查询侧差分 + 聚合层选层——那是 spec-1.11（慢查询分析 skill）的活，不属于落库层。
+// 与其挂一个返回错数的端点，不如让调用方在这里得到明确的 501。
+// 存储层照常存慢查询统计（spec-1.4 采、本 spec 存），只是不在此提供排名。
+func (s *Server) topEntities(_ http.ResponseWriter, r *http.Request) error {
+	if _, err := pathUUID(r, "id"); err != nil {
 		return err
 	}
-	if s.collected == nil {
-		return apierror.New(apierror.CodeCommonNotImplemented)
-	}
-	q := r.URL.Query()
-	name := q.Get("name")
-	decl, ok := metrics.LookupSeries(name)
-	if !ok || decl.EntityKind == "" {
-		// 无实体维度的 series 排 Top N 无意义——显式拒绝，别返回空数组让调用方猜。
-		return apierror.New(apierror.CodeValidationFailed).WithDetails(
-			apierror.Detail{Field: "name", Reason: "该 series 不带实体维度，无法排名"})
-	}
-	from, to, err := parseWindow(q.Get("from"), q.Get("to"))
-	if err != nil {
-		return err
-	}
-	limit, err := parseLimit(q.Get("limit"), defaultTopN, maxTopN)
-	if err != nil {
-		return err
-	}
-
-	items, err := s.collected.TopEntities(r.Context(), dsID, name, from, to, limit)
-	if err != nil {
-		return err
-	}
-	if items == nil {
-		items = []tsstore.RankedEntity{}
-	}
-	return writeJSON(w, http.StatusOK, map[string]any{
-		"datasource_id": dsID, "name": name, "from": from, "to": to, "items": items,
-	})
+	return apierror.New(apierror.CodeCommonNotImplemented)
 }
 
 // latestSnapshot GET /api/v1/datasources/{id}/snapshots/{kind}

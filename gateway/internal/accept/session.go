@@ -237,7 +237,7 @@ func (s *SessionServer) handleDataUpload(ctx context.Context, sess *session, du 
 		sess.signalCommand(du.GetCommandId(), errors.New("AR_METRICS_COLLECT_FAILED: decode batch"))
 		return
 	}
-	if err := s.uploader.UploadMetrics(ctx, sess.tenantID, batch); err != nil {
+	if err := s.uploader.UploadMetrics(ctx, sess.tenantID, sess.connectorID, batch); err != nil {
 		s.logger.Warn("data upload forward failed", "connector_id", sess.connectorID, "err", err)
 		sess.signalCommand(du.GetCommandId(), errors.New("AR_METRICS_COLLECT_FAILED: upload"))
 		return
@@ -263,7 +263,7 @@ func (s *SessionServer) handleSnapshotUpload(
 		sess.signalCommand(du.GetCommandId(), errors.New("AR_SNAPSHOT_COLLECT_FAILED: kind mismatch"))
 		return
 	}
-	if err := s.uploader.UploadSnapshot(ctx, sess.tenantID, snapshot); err != nil {
+	if err := s.uploader.UploadSnapshot(ctx, sess.tenantID, sess.connectorID, snapshot); err != nil {
 		s.logger.Warn("snapshot forward failed",
 			"connector_id", sess.connectorID, "kind", kind, "err", err)
 		sess.signalCommand(du.GetCommandId(), errors.New("AR_SNAPSHOT_COLLECT_FAILED: upload"))

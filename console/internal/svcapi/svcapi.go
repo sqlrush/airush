@@ -24,22 +24,35 @@ type Server struct {
 	// ——上报请求显式 501 而不是假装收下（规则 6）。
 	sink         metrics.Sink
 	snapshotSink metrics.SnapshotSink
+	// ownership 判定上报连接器与数据源的归属（见 ownership.go）。有 store 时默认走库；
+	// nil 时上报一律 501——没有归属校验就收数据等于放弃这道防线。
+	ownership OwnershipChecker
 }
 
 type certTTLConfig struct{ connectorCert int } // 天
 
 // New 构造；svcToken 必须非空（fail fast 在 cmd 侧校验配置存在性）。
 func New(store *repo.Store, ca *pki.CA, svcToken string) *Server {
-	return &Server{
+	s := &Server{
 		store: store, ca: ca, svcToken: svcToken,
 		certTTL: certTTLConfig{connectorCert: 90},
 	}
+	if store != nil {
+		s.ownership = repoOwnership{store: store}
+	}
+	return s
 }
 
 // WithSinks 注入采集落点（spec-1.5 D5）。分开构造是为了让 spec-1.2 既有的
 // 注册/握手路径在无落库配置时照常工作。
 func (s *Server) WithSinks(sink metrics.Sink, snapshotSink metrics.SnapshotSink) *Server {
 	s.sink, s.snapshotSink = sink, snapshotSink
+	return s
+}
+
+// WithOwnership 替换归属校验实现（测试替身；生产默认为 repoOwnership）。
+func (s *Server) WithOwnership(o OwnershipChecker) *Server {
+	s.ownership = o
 	return s
 }
 
