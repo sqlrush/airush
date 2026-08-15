@@ -1,0 +1,19 @@
+# spec-1.7 探测用 LiteLLM 配置：无状态（无 DATABASE_URL）、只做路由。
+model_list:
+  - model_name: chat-default          # 平台侧逻辑模型名
+    litellm_params:
+      model: openai/mock-model         # 走 OpenAI 兼容协议打到假供应商
+      api_base: http://host.docker.internal:18099/v1
+      api_key: sk-mock
+  - model_name: chat-fallback
+    litellm_params:
+      model: openai/mock-model-b
+      api_base: http://host.docker.internal:18099/v1
+      api_key: sk-mock
+general_settings:
+  master_key: sk-probe-master
+litellm_settings:
+  telemetry: false
+  drop_params: true
+  fallbacks:
+    - chat-default: ["chat-fallback"]
