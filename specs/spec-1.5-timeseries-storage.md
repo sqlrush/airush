@@ -1,6 +1,6 @@
 # spec-1.5 数据接入层与时序存储
 
-> **frozen** — user approve 2026-08-14（§8 Q1-Q7 **全采 ★**；新增系统服务依赖
+> **shipped** — user approve 2026-08-14，实施完成 + review 收口 2026-08-15（PR #27）。§8 Q1-Q7 **全采 ★**；新增系统服务依赖
 > TimescaleDB 扩展一并批准；无新增 Go module，无 proto 变更）
 
 ## Header / 元数据
@@ -393,7 +393,7 @@ func (q *Querier) SnapshotHistory(ctx, datasourceID, kind string, limit int) ([]
 | T15 | 连续聚合 5m/1h 数值与原始点聚合一致 | 聚合正确性 |
 | T16 | real-time aggregation：刚写入未物化的点可被 5m 视图查到 | 无数据缺口 |
 | T17 | `SeriesRange` 按 range 自动选层（14d/90d/400d 三档） | 读路径选层 |
-| T18 | `TopEntities` 返回带 label 的 Top N，与手工聚合一致 | 慢查询主查询路径 |
+| T18 | ~~`TopEntities` 返回带 label 的 Top N，与手工聚合一致~~ **移交 spec-1.11**（2026-08-15 review：累计计数器需差分 + 目录 Kind，见 §11）；本 spec 端点显式 501 有用例 | 慢查询主查询路径 |
 | T19 | 保留策略：`drop_chunks` 后 entities/snapshots 不受影响 | 保留期边界 |
 | T20 | 数据源删除 → 其 entities/snapshots 级联清理 | FK 语义 |
 
@@ -446,20 +446,20 @@ func (q *Querier) SnapshotHistory(ctx, datasourceID, kind string, limit int) ([]
 
 ## §7 DoD
 
-- [ ] D1-D6 全部交付，迁移 `up`/`down` 均可执行且 `up→down→up` 结果一致（spec-0.6 T2 语义）；
-- [ ] **AD-10 四项隔离用例 T7-T10 全绿**——任一不过即本 spec 不可合并（硬门槛）；
-- [ ] T14 证明压缩与隔离视图共存（AD-7 与 AD-10 冲突的最终闭环验证）；
-- [ ] R1 基准：批量写入相对无视图直写退化 ≤30%，实测数据记入 spec changelog；
-- [ ] 单元测试 T1-T6、T11-T13 全绿；集成 T14-T20 全绿；端到端 T21-T22 全绿；
-- [ ] 覆盖率：`console` ≥80%、`libs/metrics` ≥80%（CLAUDE.md 规则 4 后端门槛）；
-- [ ] 两层命名落地：`libs/metrics` 内不再有裸 `pg.` 前缀的**规范类**指标（引擎特有的保留）；
-- [ ] 三个新错误码入 `proto/errors.json` 且各有触发用例（规则 4：每个错误码有触发用例）；
-- [ ] 可观测性（spec-0.9 三件套）：写入批数/行数/失败数 metric、查询延迟 histogram、
+- [x] D1-D6 全部交付，迁移 `up`/`down` 均可执行且 `up→down→up` 结果一致（spec-0.6 T2 语义）；
+- [x] **AD-10 四项隔离用例 T7-T10 全绿**——任一不过即本 spec 不可合并（硬门槛）；
+- [x] T14 证明压缩与隔离视图共存（AD-7 与 AD-10 冲突的最终闭环验证）；
+- [x] R1 基准：批量写入相对无视图直写退化 ≤30%，实测数据记入 spec changelog；
+- [x] 单元测试 T1-T6、T11-T13 全绿；集成 T14-T20 全绿；端到端 T21-T22 全绿；
+- [x] 覆盖率：`console` ≥80%、`libs/metrics` ≥80%（CLAUDE.md 规则 4 后端门槛）；
+- [x] 两层命名落地：`libs/metrics` 内不再有裸 `pg.` 前缀的**规范类**指标（引擎特有的保留）；
+- [x] 三个新错误码入 `proto/errors.json` 且各有触发用例（规则 4：每个错误码有触发用例）；review 追加第 4 个 `AR_COLLECT_DATASOURCE_MISMATCH`，同样有替身单测 + 真库集成用例；
+- [x] 可观测性（spec-0.9 三件套）：写入批数/行数/失败数 metric、查询延迟 histogram、
       压缩与保留策略执行日志；
-- [ ] dev-verify ALL PASS，含 T21/T22 两条新断言；
-- [ ] Helm 部署 TimescaleDB 镜像在 kind 环境起得来，扩展就绪断言通过；
-- [ ] CI 全绿（含已接入的 openGauss 集成任务不受影响）；
-- [ ] 文档同步：spec 状态、roadmap §8 进度表、CHANGELOG、`docs/2026-08-08-airush-platform-design.md`
+- [x] dev-verify ALL PASS，含 T21/T22 两条新断言；
+- [x] Helm 部署 TimescaleDB 镜像在 kind 环境起得来，扩展就绪断言通过；
+- [x] CI 全绿（含已接入的 openGauss 集成任务不受影响）——PR #27 lint/test/build/integration/gitleaks 全 pass；
+- [x] 文档同步：spec 状态、roadmap §8 进度表、CHANGELOG、`docs/2026-08-08-airush-platform-design.md`
       §2.5 存储矩阵补 `collected`/`tsdb` schema 说明。
 
 ---
@@ -561,3 +561,21 @@ func (q *Querier) SnapshotHistory(ctx, datasourceID, kind string, limit int) ([]
   **不改本 spec 落的任何表**——这是本 spec 表数收敛承诺的兑现点；
 - **spec-3.9**（巡检调度中心）：采集策略从编译期常量搬到配置表（§1.2 #3）；
 - **远期**（roadmap §4.4）：`datasource_relations` 拓扑边表（§1.2 #1）。
+
+---
+
+## §11 实施 Changelog（frozen 后追加，不重写正文）
+
+| 日期 | 变更 |
+|---|---|
+| 2026-08-14 | **慢查询耗时类 series 改用秒，名字随之由 `db.slowlog.total_ms` 等改为 `db.slowlog.total_seconds` 等。** §2.2 示例表原写 `_ms`，与 §2.6 的规范层定位不自洽——`Unit` 词表只有 count/ratio/bytes/seconds，没有毫秒项。规范层的意义就是单位统一：PG 的 `pg_stat_statements` 给毫秒、MySQL 的慢日志给秒，换算在采集侧消化一次（`metrics.SlowQuerySeriesValues` 是唯一换算点），下游 skill 与图表永不必判断"这条是毫秒还是秒"。属实现期发现的 spec 文字缺陷，语义与 Deliverable 边界不变 |
+| 2026-08-14 | **`pg.database.size_bytes` 改规范名时一并更名为 `db.storage.size_bytes`。** 该指标统计的是实例上全部库的总字节数，而 "database" 一词在 MySQL 里指 schema、在 openGauss 里指库，跨引擎歧义大，不适合做规范指标名的中段 |
+| 2026-08-14 | **新增规范指标 `db.replication.lag_seconds`**（§2.6 表中已列出，本次实现）。PG 族用 `now() - pg_last_xact_replay_timestamp()` 换算，与 MySQL 的 `Seconds_Behind_Master` 语义对齐；原 `pg.replication.lag_bytes` 保留在引擎特有层（MySQL 无字节级延迟概念，不硬凑） |
+| 2026-08-14 | **迁移文件组织受两条 TimescaleDB 约束定型**（实测，非推演）：① 连续聚合必须 `WITH NO DATA`——golang-migrate 整文件单次 Exec 构成隐式事务块，`WITH DATA` 报 `cannot run inside a transaction block` 且整批回滚；② `materialized_only` 必须显式设 `false`——2.13+ 默认为 `true`，那样刚写入未物化的点在视图里不可见，控制台会出现假数据缺口（对应 §3.7 与 T16） |
+| 2026-08-15 | **R1 基准通过，§8 Q2 选项 A（写入经隔离视图）确认落地**：20000 行 × 3 轮取最小，经 `collected.series` 视图 499ms vs 直插 `tsdb.series` 基表 471ms，**退化 5.9%**，远低于 30% 门槛。选项 B（独立 `airush_ingest` 角色 + 基表直授权）不启用——它要多一个角色和一套授权，为 6% 不值得，而基表零授权这道锁是等效隔离形态的第一道锁。基准固化为 `TestViewWriteOverheadWithinBudget`，回归即失败 |
+| 2026-08-15 | **T14 由 T7 覆盖，不另立用例**：`TestCollectedIsolation/T7` 本就先 `compress_chunk` 再断言隔离，且断言"存在已压缩 chunk"（否则该用例等于没验压缩）。T14 的原始表述"compress_chunk 后 T7 仍成立"与之逐字重合，另写一条只是复制 |
+| 2026-08-15 | **采集侧修掉一处租户上下文漏传（实现缺陷，非 spec 变更）**：`collector.collectMetricsDirect` / `collectSnapshotDirect` 建好了 `tctx` 却只喂给 probe，落点调用传的仍是无租户的 `ctx`。spec-1.3/1.4 时期落点是内存 `BufferSink`（根本不看租户），故单测与 CI 一路绿；spec-1.5 换成 tsstore 后立刻 fail-closed 成 `AR_TENANT_CONTEXT_MISSING`，采集心跳全灭。已修，并在 collector 集成用例里加 `tenantGuardSink`——每次落点调用都断言携带租户上下文，这类"内存实现掩盖真实约束"的洞不再需要接真库才发现 |
+| 2026-08-15 | **覆盖率补齐时暴露一处 trace_id 断链（顺手修）**：svcapi 的服务间认证在进入 `apierror.Middleware` **之前**就拒绝请求，直接读 `X-Trace-Id` 头，上游没带就回一个空 trace_id——恰恰是最需要能追的那条路径。`apierror` 导出 `TraceIDFrom`（无上游则自造，与 Middleware 同一套），认证出口改用它，spec-0.8 §2.2 的"trace_id 必达"在每条错误路径上都成立。补测后 console 覆盖率 78.4% → **83.3%**（svcapi/ingest.go 从 0% 到 100%，httpapi/collected.go 39% → 94%） |
+| 2026-08-15 | **Code review：`TopEntities` / `/top-entities` 移出本 spec，改为显式 501，T18 随之移交 spec-1.11**。首版对累计计数器直接 `sum(value)`——慢查询统计每 5 分钟采一次，1 小时窗口 12 个样本，`Total` = 12 × 自实例启动以来的累计值，排名按"生命周期累计"排：上个月很重、今天没跑的 SQL 永远第一。T18 用例每实体只有 1 个样本，断言过了，属"绿但错"。**根因是 spec 层盲区**：§8 Q1 ★ 定"存累计原值、查询侧用 `counter_agg` 差分"，但 `counter_agg` 在 TimescaleDB Toolkit 里，本 spec 选的 `timescale/timescaledb` 镜像**不含** Toolkit（在 `timescaledb-ha` 里）；且目录没有任何字段区分 counter/gauge（`db.transactions.commit_total` 是计数器、`db.connections.active` 是 gauge），读路径无从判断。**算对它是 spec-1.11（慢查询分析 skill）的活，不属于落库层**（user 2026-08-15 定：聚焦 agent 框架，skill 具体功能不展开），故按规则 6"要么完整实现要么显式拒绝"移出。**留给 spec-1.11 的账**：① `CatalogEntry` 加 `Kind: counter/gauge`；② 计数器窗口增量 = Σ max(v−prev, 0)（重启回绕按新值计），gauge 用 avg/last；③ 排名也要按窗口起点选层（首版永远查 raw 层，>14 天窗口静默截断），聚合层需 `first_value` 列（改 0004 或补 0005）；④ 若要用 Toolkit 走 `counter_agg`，须按规则 5 硬门槛 #4 单独批镜像换 `timescaledb-ha`。`SeriesRange` 保留：它返回原始桶聚合，对计数器画图由消费方按 Kind 决定 rate 或原值（spec-1.13 消费时一并处理）。存储层不动——慢查询统计照常落 `tsdb.series` + `collected.entities`（T2 仍验实体字典与 5 条 series） |
+| 2026-08-15 | **Code review：Connector 通道上报补「数据源归属」校验（fail-closed，新错误码 `AR_COLLECT_DATASOURCE_MISMATCH`）**。原实现里租户边界成立（tenant 来自 mTLS 证书 SAN，越权写被 `check_option` 拦），但 `batch.DatasourceID` 是连接器**自报**的：gateway 不核对它是否等于触发指令的数据源，console 也不核对该数据源的 `connector_id`——被攻破的连接器可以在**同租户内**往别的数据源（含 direct 数据源）灌假数据，污染日后 agent 诊断依据，且"数据是对的、只是从哪来的不对"在租户视角最难察觉。修法：内部上报请求（`/internal/v1/collected/*`）增 `connector_id`（gateway 从会话取，与 tenant 同信任基础），console 在租户事务里查 `datasources` 表：`connect_mode='connector' AND connector_id = 上报连接器`，否则 403；数据源查无 404；无归属校验器时 501（没有这道防线就收数据 = 放弃它）。**由数据库回答归属**（RLS 视图内查表），不是 gateway 内存比对。内部 API 未 shipped，不构成契约变更；错误码是本 spec 第 4 个新码，超出 §7 DoD 所列 3 个，各有触发用例（单测替身 + 真库集成） |
+| 2026-08-15 | **观测性 label 维持 spec-0.9 §2.2 现有白名单，不为本 spec 扩充**：写入/查询指标只用 `status` + `code`；`kind`（metrics/slowlog/…）与 `layer`（raw/5m/1h）虽是低基数维度，但白名单扩充按 spec-0.9 §2.2 要动那份已 frozen 的 spec，为一个锦上添花的维度不值得。两者进结构化日志，排障照样可查。另在 `tsstore.New` 启动时读 `timescaledb_information.jobs` 把实际生效的压缩/保留/连续聚合策略打进日志——策略由迁移创建、由后台作业执行，进程内不可见，某次迁移漏掉 `add_retention_policy` 会让磁盘安静地涨到爆，这是最便宜的一道核对 |

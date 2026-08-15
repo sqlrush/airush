@@ -260,7 +260,10 @@ dev-up:
 		kind create cluster --config deploy/kind/config.yaml
 	@$(MAKE) image-gateway image-console image-connector
 	kind load docker-image $(REGISTRY)/gateway:latest $(REGISTRY)/console:latest $(REGISTRY)/connector:latest --name $(KIND_CLUSTER)
-	helm upgrade --install airush deploy/charts/airush \
+	@# --kube-context 显式绑定：集群已存在时上面不会 kind create，helm 就会打到
+	@# kubectl 的当前 context 上——机器上若还有别的集群（orbstack 等），这是往错误
+	@# 集群发布。下面所有 kubectl 都带 --context，helm 不能例外。
+	helm upgrade --install airush deploy/charts/airush --kube-context kind-$(KIND_CLUSTER) \
 		-f deploy/charts/airush/values-dev.yaml --wait --timeout 5m
 	@# :latest + pullPolicy:Never 下，镜像内容变但 Deployment spec 不变 → helm 不滚动 pod。
 	@# 显式 rollout restart 让已 kind-load 的新镜像生效（dev 环境每次 dev-up 都重建镜像）。

@@ -28,6 +28,7 @@ import (
 	"github.com/sqlrush/airush/console/internal/repo"
 	"github.com/sqlrush/airush/console/internal/svcapi"
 	"github.com/sqlrush/airush/console/internal/tenancy"
+	"github.com/sqlrush/airush/libs/metrics"
 	"github.com/sqlrush/airush/testkit"
 )
 
@@ -270,4 +271,86 @@ func randSuffix(t *testing.T) string {
 		out[i*2+1] = hexd[v&0xf]
 	}
 	return string(out)
+}
+
+// TestIngestOwnershipEnforcedByDB spec-1.5 review 补：归属校验走真库——
+// 连接器只能替自己名下的 connector 数据源上报；同租户内别的连接器的数据源、
+// direct 数据源、不存在的数据源，一律拒。单测里是替身，这里是生产实现 repoOwnership。
+func TestIngestOwnershipEnforcedByDB(t *testing.T) {
+	e := newEnv(t)
+	connA, _ := e.createConnector(t, 15*time.Minute)
+	connB, _ := e.createConnector(t, 15*time.Minute)
+
+	ctx := tenancy.WithTenant(context.Background(), devTenantID)
+	var dsOfA, dsOfB, dsDirect string
+	err := e.store.InTenantTx(ctx, func(ctx context.Context, tx repo.Tx) error {
+		mk := func(name, mode string, connID *string) (string, error) {
+			in := repo.DatasourceInput{
+				Name: name, EngineFamily: "postgres", Engine: "postgres",
+				ConnectMode: mode, ConnectorID: connID, Host: "h", Port: 5432,
+			}
+			if mode == "direct" {
+				credID, err := repo.InsertCredential(ctx, tx, "u", []byte{0}, "k1")
+				if err != nil {
+					return "", err
+				}
+				in.CredentialID = &credID
+			}
+			ds, err := repo.InsertDatasource(ctx, tx, in)
+			return ds.ID, err
+		}
+		var err error
+		if dsOfA, err = mk("ds-a", "connector", &connA); err != nil {
+			return err
+		}
+		if dsOfB, err = mk("ds-b", "connector", &connB); err != nil {
+			return err
+		}
+		dsDirect, err = mk("ds-direct", "direct", nil)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("seed datasources: %v", err)
+	}
+
+	// 上报用替身落点，只验归属这一层
+	sink := metrics.NewBufferSink(8)
+	srv := httptest.NewServer(svcapi.New(e.store, nil, svcToken).WithSinks(sink, sink).Handler())
+	t.Cleanup(srv.Close)
+	e2 := &env{admin: e.admin, store: e.store, srv: srv}
+
+	body := func(connID, dsID string) map[string]any {
+		return map[string]any{
+			"tenant_id": devTenantID, "connector_id": connID,
+			"batch": map[string]any{
+				"datasource_id": dsID, "engine_family": "postgres",
+				"metrics": []map[string]any{{"name": "db.connections.active", "value": 1, "at": time.Now().UTC()}},
+			},
+		}
+	}
+	cases := []struct {
+		name       string
+		connID, ds string
+		wantStatus int
+		wantCode   string
+	}{
+		{"自己名下的数据源 → 收", connA, dsOfA, http.StatusAccepted, ""},
+		{"同租户另一连接器的数据源 → 拒", connA, dsOfB, http.StatusForbidden, "AR_COLLECT_DATASOURCE_MISMATCH"},
+		{"direct 数据源 → 拒", connA, dsDirect, http.StatusForbidden, "AR_COLLECT_DATASOURCE_MISMATCH"},
+		{"不存在的数据源 → 404", connA, "ffffffff-0000-0000-0000-00000000000f", http.StatusNotFound, "AR_DATASOURCE_NOT_FOUND"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			status, m := e2.post(t, "/internal/v1/collected/metrics", svcToken, body(c.connID, c.ds))
+			if status != c.wantStatus {
+				t.Fatalf("status = %d, want %d（%v）", status, c.wantStatus, m)
+			}
+			if c.wantCode != "" && m["code"] != c.wantCode {
+				t.Fatalf("code = %v, want %s", m["code"], c.wantCode)
+			}
+		})
+	}
+	if sink.Total() != 1 {
+		t.Fatalf("落点收到 %d 批，want 1——被拒的上报不该落库", sink.Total())
+	}
 }

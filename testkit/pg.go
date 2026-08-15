@@ -13,7 +13,13 @@ import (
 )
 
 // pgImage 与 dev-deps compose、生产目标版本一致（spec-0.5 §2.2，升级修订 spec）。
-const pgImage = "postgres:16.6"
+//
+// 2026-08-14（spec-1.5）由 postgres:16.6 换为 TimescaleDB 镜像：控制面自 spec-1.5 起
+// 依赖 timescaledb 扩展（AD-7），裸 PG 上 0004 迁移会直接失败。该镜像本身即 PG 16
+// （16.14）+ 预装扩展，对既有用例是纯超集，无行为差异。
+// 版本钉死不用 latest-pg16：迁移里的连续聚合、压缩策略 API 跨版本有变更，
+// 浮动 tag 会让 CI 在某天无声变红。
+const pgImage = "timescale/timescaledb:2.29.1-pg16"
 
 // Postgres 是一个测试用 PG 容器句柄。
 type Postgres struct {

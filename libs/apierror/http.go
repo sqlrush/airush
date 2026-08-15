@@ -64,6 +64,11 @@ func writeResponse(w http.ResponseWriter, traceID string, ae *Error) {
 	})
 }
 
+// TraceIDFrom 取上游 trace_id，无则自造——供 Middleware 之外的错误出口
+// （如认证中间件在进入 Handler 前就要拒绝）复用，保证 spec-0.8 §2.2 的
+// "trace_id 必达"在每条错误路径上都成立，而不是只在 Middleware 覆盖的那条上。
+func TraceIDFrom(r *http.Request) string { return traceIDFrom(r) }
+
 func traceIDFrom(r *http.Request) string {
 	if id := r.Header.Get(TraceHeader); id != "" {
 		return id

@@ -309,13 +309,23 @@ func TestMetricsOnOpenGauss(t *testing.T) {
 			t.Fatalf("metric %q missing on openGauss (missing set: %v)", entry.Name, batch.Missing)
 		}
 	}
-	if m := byName["pg.cache.hit_ratio"]; m.Value < 0 || m.Value > 1 {
+	if m := byName["db.cache.hit_ratio"]; m.Value < 0 || m.Value > 1 {
 		t.Fatalf("cache hit ratio out of domain: %v", m.Value)
 	}
-	// 复制延迟缺采是允许的（主库），但**不允许**因为函数不存在而报错——AltSQL 已覆盖；
-	// 若 Missing 里有它，说明走的是 "无值" 分支而非执行失败，由上面的 Collect 成功保证。
+	// 复制延迟类缺采是允许的（主库无上游），但**不允许**因为函数不存在而报错——
+	// AltSQL 已覆盖；若 Missing 里有它，说明走的是"无值"分支而非执行失败，
+	// 由上面的 Collect 成功保证。
+	//
+	// 允许缺采的集合由目录的 Nullable 标志推导，不写死名字：写死会在目录新增
+	// Nullable 指标时无声变红（2026-08-14 加 db.replication.lag_seconds 时正好如此）。
+	nullable := map[string]bool{}
+	for _, entry := range metrics.PostgresCatalog {
+		if entry.Nullable {
+			nullable[entry.Name] = true
+		}
+	}
 	for _, name := range batch.Missing {
-		if name != "pg.replication.lag_bytes" {
+		if !nullable[name] {
 			t.Fatalf("unexpected missing metric on openGauss: %s", name)
 		}
 	}

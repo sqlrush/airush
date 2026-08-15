@@ -108,6 +108,18 @@ Skill 注册表存控制面（记录 MCP endpoint 与租户可见性）；agent 
 | Redis | 会话上下文缓存、任务队列 | Stage 1 |
 | Neo4j + Graphiti | agent 时序记忆 + 运维知识图谱 | Stage 3 |
 
+**同一 PG 实例内的 schema 划分**（spec-1.5 落地，2026-08-15 补记）：
+
+| schema | 内容 | 隔离形态 | 应用角色权限 |
+|---|---|---|---|
+| `public` | 控制面领域表（租户/数据源/连接器/agent…） | AD-10 默认形态：RLS `ENABLE`+`FORCE`+policy | 表级 CRUD |
+| `collected` | 采集来的**客户库**数据：`entities` 实体字典、`snapshots` 慢变状态、以及 `series*` 隔离视图 | 两张表走默认 RLS；视图承载超表的等效形态 | 表/视图级 CRUD |
+| `tsdb` | 读数流水基表 `series`（超表）与两层连续聚合 | AD-10 等效形态：**零授权** + `security_barrier` 视图 + `check_option` | **无 USAGE**（够不到） |
+
+平台自身数据（审计、会话等）不进 `collected`——那里只放采集来的客户库数据，
+两类数据的保留期、脱敏要求、可见性都不同，混在一个 schema 里迟早出错。
+采集侧的表数**固定为 3 张**：新增采集能力与新增引擎只加编译期目录常量，不加表、不改 schema。
+
 ## 3. 技术栈
 
 | 层 | 选型 | 理由 |

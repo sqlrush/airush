@@ -50,6 +50,45 @@ func (c *countingConnector) kindCount(kind string) int {
 	return c.kinds[kind]
 }
 
+// tenantGuardSink 包在 BufferSink 外，统计"落点被调用时没带租户上下文"的次数。
+//
+// spec-1.5 回归防线：采集侧一度把裸 ctx（而非 tenancy.WithTenant 后的 tctx）传给
+// Sink。内存 Sink 根本不看租户，测试与 CI 一路绿灯；换成落库 Sink 后才在 dev-verify
+// 里炸成 AR_TENANT_CONTEXT_MISSING——采集心跳全灭。断言"每次落点调用都带租户"，
+// 这条路径就不必等到接真库才发现。
+type tenantGuardSink struct {
+	*metrics.BufferSink
+	missing atomic.Int64
+}
+
+func newTenantGuardSink(capacity int) *tenantGuardSink {
+	return &tenantGuardSink{BufferSink: metrics.NewBufferSink(capacity)}
+}
+
+func (s *tenantGuardSink) Publish(ctx context.Context, batch metrics.Batch) error {
+	s.note(ctx)
+	return s.BufferSink.Publish(ctx, batch)
+}
+
+func (s *tenantGuardSink) PublishSnapshot(ctx context.Context, snap metrics.Snapshot) error {
+	s.note(ctx)
+	return s.BufferSink.PublishSnapshot(ctx, snap)
+}
+
+func (s *tenantGuardSink) note(ctx context.Context) {
+	if _, ok := tenancy.FromContext(ctx); !ok {
+		s.missing.Add(1)
+	}
+}
+
+// assertTenantAlwaysPresent 在用例末尾调用。
+func (s *tenantGuardSink) assertTenantAlwaysPresent(t *testing.T) {
+	t.Helper()
+	if n := s.missing.Load(); n != 0 {
+		t.Fatalf("%d 次落点调用缺租户上下文——落库 Sink 会 fail-closed，采集数据全丢", n)
+	}
+}
+
 func TestCollectorPeriodicAndLifecycle(t *testing.T) {
 	ctx := context.Background()
 	pg, err := testkit.StartPostgres(ctx)
@@ -79,7 +118,7 @@ func TestCollectorPeriodicAndLifecycle(t *testing.T) {
 	// T6：不可达 Direct 数据源 → 采集失败退避，不阻断健康实例（隔离性）。
 	createNamedDirectDS(t, store, sealer, tctx, "collector-ds-bad", "127.0.0.1", 1, "x")
 
-	sink := metrics.NewBufferSink(64)
+	sink := newTenantGuardSink(64)
 	conn := &countingConnector{kinds: map[string]int{}}
 	cfg := collector.Config{
 		Interval: 300 * time.Millisecond, MinInterval: 100 * time.Millisecond,
@@ -114,6 +153,7 @@ func TestCollectorPeriodicAndLifecycle(t *testing.T) {
 	if b, ok := sink.Latest(); !ok || b.DatasourceID != dsID || len(b.Metrics) == 0 {
 		t.Fatalf("latest batch = %+v ok=%v", b, ok)
 	}
+	sink.assertTenantAlwaysPresent(t)
 }
 
 func createDirectDS(t *testing.T, store *repo.Store, sealer *credcrypto.Sealer, tctx context.Context, host string, port int, password string) string {
@@ -220,7 +260,7 @@ func TestCollectorDrivesEveryKind(t *testing.T) {
 	createNamedDirectDS(t, store, sealer, tctx, "kinds-direct", host, port, password)
 	createConnectorDS(t, store, tctx)
 
-	sink := metrics.NewBufferSink(64)
+	sink := newTenantGuardSink(64)
 	conn := &countingConnector{kinds: map[string]int{}}
 	cfg := collector.Config{
 		Interval: 200 * time.Millisecond, MinInterval: 100 * time.Millisecond,
@@ -257,4 +297,5 @@ func TestCollectorDrivesEveryKind(t *testing.T) {
 	} {
 		waitFor(t, 8*time.Second, func() bool { return conn.kindCount(kind) >= 1 })
 	}
+	sink.assertTenantAlwaysPresent(t)
 }

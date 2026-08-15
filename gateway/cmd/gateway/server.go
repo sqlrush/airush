@@ -16,12 +16,8 @@ import (
 	"github.com/sqlrush/airush/gateway/internal/accept"
 	"github.com/sqlrush/airush/gateway/internal/consoleclient"
 	"github.com/sqlrush/airush/libs/apierror"
-	"github.com/sqlrush/airush/libs/metrics"
 	"github.com/sqlrush/airush/libs/obs"
 )
-
-// metricsSinkCapacity 是 gateway 侧 Connector 上报环形 Sink 的保留批数（Stage 1）。
-const metricsSinkCapacity = 256
 
 // runServer 组装观测/错误中间件链并带优雅退出运行（k8s preStop 契约的雏形）。
 func runServer(cfg appConfig, provider *obs.Provider, version string) error {
@@ -82,16 +78,14 @@ func startAccept(_ context.Context, cfg appConfig, provider *obs.Provider, errCh
 		return nil, nil
 	}
 	console := consoleclient.New(cfg.ConsoleURL, cfg.SvcToken)
-	// Connector DataUpload 落点（spec-1.3 §2.4 / spec-1.4）：Stage 1 内存 buffer 验证
-	// 链路，spec-1.5 换 TimescaleDB Sink。同一个 BufferSink 兼任指标与快照落点，
-	// 收讫计数经 Total/SnapshotTotal 可观测。
-	sink := metrics.NewBufferSink(metricsSinkCapacity)
+	// Connector DataUpload 出口（spec-1.5 §8 Q5-A）：转发给 console 落库。
+	// gateway 自身不持 DB 连接——它面向客户侧 Connector，爆炸半径值得保住。
 	servers, err := accept.Build(console, accept.TLSMaterial{
 		ServerCertPEM: []byte(cfg.TLSCertPEM),
 		ServerKeyPEM:  []byte(cfg.TLSKeyPEM),
 		ClientCAPEM:   []byte(cfg.ClientCAPEM),
 	}, accept.DefaultSessionConfig(), accept.Deps{
-		Logger: provider.Logger, Sink: sink, SnapshotSink: sink,
+		Logger: provider.Logger, Uploader: console,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("build accept servers: %w", err)

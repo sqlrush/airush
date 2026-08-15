@@ -56,7 +56,10 @@ storage:
   # 云 SaaS 形态置 false 并显式配置 console.dbUrl
   builtin: true
   pg:
-    image: postgres:16.6
+    # spec-1.5：控制面依赖 timescaledb 扩展（AD-7）。该镜像即 PG 16 + 预装扩展，
+    # 对既有用法是纯超集。版本钉死不用 latest-pgNN——压缩与连续聚合 API 跨版本有
+    # 变更，浮动 tag 会让部署某天无声出错。
+    image: timescale/timescaledb:2.29.1-pg16
     password: airush-dev-pg # 仅内置开发/本地形态；生产凭据经部署侧 Secret 管理
     storage: 1Gi
     resources:
