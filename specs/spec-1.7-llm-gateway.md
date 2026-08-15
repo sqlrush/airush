@@ -1,6 +1,6 @@
 # spec-1.7 LLM 网关
 
-> **DRAFT — 待 user approve**（2026-08-15 起草）。Stage 1 严格事前 approve，approve 前不动代码。
+> **frozen** — user approve 2026-08-15（§8 Q1-Q7 **全采 ★**；新增第三方镜像 `ghcr.io/berriai/litellm` 一并批准；`libs/tenancy` 提取一并批准；无新增 Go module）。
 > 起草前已就 LiteLLM 形态做过实测（`deploy/scripts/probe-litellm/`），§2/§6 中标 **实测** 的
 > 断言来自那次探测，不是推演。
 
