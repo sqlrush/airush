@@ -49,7 +49,8 @@ func tsLiteral(at time.Time) string {
 // seedRawPoint 直接写基表：造历史数据要能指定任意时刻，而写路径只接受目录声明的
 // series，两者关注点不同，这里刻意绕过写路径。
 func seedRawPoint(t *testing.T, s *Store, tenantID, datasourceID, name, entityID string,
-	value float64, at time.Time) {
+	value float64, at time.Time,
+) {
 	t.Helper()
 	adminExec(t, s, fmt.Sprintf(`INSERT INTO tsdb.series
 		(tenant_id, datasource_id, series_name, entity_id, value, at)
@@ -66,7 +67,8 @@ func refreshCAgg(t *testing.T, s *Store, view string, from, to time.Time) {
 // oneBucket 经**应用视图**读某个时间范围内的单个桶（不是直读 tsdb，也不走 SeriesRange：
 // 这里要验的是聚合视图本身的数值，不该被选层逻辑搅进来）。
 func oneBucket(t *testing.T, s *Store, ctx context.Context, relation, name string,
-	from, to time.Time) Point {
+	from, to time.Time,
+) Point {
 	t.Helper()
 	// #nosec G201 —— relation 是本文件的常量，无外部输入。
 	sql := fmt.Sprintf(`SELECT bucket, avg_value, min_value, max_value, last_value, sample_count

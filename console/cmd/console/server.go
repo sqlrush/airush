@@ -161,9 +161,14 @@ func runServer(cfg appConfig, provider *obs.Provider, version string) error {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
+	return serveUntilSignal(ctx, srv, provider)
+}
+
+// serveUntilSignal 起监听并阻塞到 ctx 取消或监听出错；退出前优雅关停。
+func serveUntilSignal(ctx context.Context, srv *http.Server, provider *obs.Provider) error {
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.ListenAndServe() }()
-	provider.Logger.Info("console serving", "listen", cfg.Listen)
+	provider.Logger.Info("console serving", "listen", srv.Addr)
 
 	select {
 	case err := <-errCh:

@@ -31,12 +31,14 @@ type fakeCollected struct {
 }
 
 func (f *fakeCollected) SeriesRange(_ context.Context, _, _, _ string,
-	_, _ time.Time, _ time.Duration) ([]tsstore.Point, error) {
+	_, _ time.Time, _ time.Duration,
+) ([]tsstore.Point, error) {
 	return f.points, f.err
 }
 
 func (f *fakeCollected) TopEntities(_ context.Context, _, _ string,
-	_, _ time.Time, _ int) ([]tsstore.RankedEntity, error) {
+	_, _ time.Time, _ int,
+) ([]tsstore.RankedEntity, error) {
 	return f.entities, f.err
 }
 

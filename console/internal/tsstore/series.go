@@ -8,7 +8,6 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/sqlrush/airush/console/internal/tenancy"
-
 	"github.com/sqlrush/airush/libs/apierror"
 	"github.com/sqlrush/airush/libs/metrics"
 )

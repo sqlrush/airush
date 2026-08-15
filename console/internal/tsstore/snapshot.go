@@ -49,39 +49,10 @@ func (s *Store) publishStateSnapshot(ctx context.Context, snap metrics.Snapshot)
 	return observeWrite(ctx, 1, s.inTenantTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		tenantID, _ := tenancy.FromContext(ctx)
 
-		// 与当前版本比对。FOR UPDATE 防同一数据源两路采集并发时双写当前版本
-		// ——唯一索引会拦住，但那是报错收场；这里让后到者等前者提交后走"未变更"分支。
-		var currentID, currentHash string
-		err := tx.QueryRow(ctx, `SELECT id::text, content_hash FROM collected.snapshots
-			WHERE tenant_id = $1 AND datasource_id = $2 AND kind = $3 AND superseded_at IS NULL
-			FOR UPDATE`,
-			tenantID, snap.DatasourceID, snap.Kind).Scan(&currentID, &currentHash)
-		switch {
-		case err == nil && currentHash == hash:
-			// 内容没变：只推进"最近一次观察到"的时间，不产生新行。
-			if _, err := tx.Exec(ctx, `UPDATE collected.snapshots
-				SET collected_at = GREATEST(collected_at, $2)
-				WHERE tenant_id = $3 AND id = $1::uuid`,
-				currentID, snap.CollectedAt, tenantID); err != nil {
-				return apierror.Wrap(apierror.CodeTimeseriesWriteFailed,
-					fmt.Errorf("touch snapshot %s: %w", currentID, err))
-			}
-			return nil
-		case err == nil:
-			// 内容变了：旧版本封版。
-			if _, err := tx.Exec(ctx, `UPDATE collected.snapshots
-				SET superseded_at = $2 WHERE tenant_id = $3 AND id = $1::uuid`,
-				currentID, snap.CollectedAt, tenantID); err != nil {
-				return apierror.Wrap(apierror.CodeTimeseriesWriteFailed,
-					fmt.Errorf("supersede snapshot %s: %w", currentID, err))
-			}
-		case errIsNoRows(err):
-			// 首次采集，无当前版本。
-		default:
-			return apierror.Wrap(apierror.CodeTimeseriesWriteFailed,
-				fmt.Errorf("load current snapshot: %w", err))
+		unchanged, err := supersedeIfChanged(ctx, tx, tenantID, snap, hash)
+		if err != nil || unchanged {
+			return err
 		}
-
 		if _, err := tx.Exec(ctx, `INSERT INTO collected.snapshots
 			(tenant_id, datasource_id, kind, source, capability_missing, truncated,
 			 catalog_version, content_hash, payload, collected_at, created_at)
@@ -94,6 +65,47 @@ func (s *Store) publishStateSnapshot(ctx context.Context, snap metrics.Snapshot)
 		}
 		return nil
 	}))
+}
+
+// supersedeIfChanged 与当前版本比对：内容未变 → 只推进 collected_at 并返回 unchanged=true；
+// 内容变了 → 旧版本封版，返回 false 让调用方插入新版本；无当前版本 → 直接返回 false。
+//
+// FOR UPDATE 防同一数据源两路采集并发时双写当前版本——唯一索引会拦住，但那是报错收场；
+// 这里让后到者等前者提交后走"未变更"分支。
+func supersedeIfChanged(ctx context.Context, tx pgx.Tx, tenantID string,
+	snap metrics.Snapshot, hash string,
+) (unchanged bool, err error) {
+	var currentID, currentHash string
+	err = tx.QueryRow(ctx, `SELECT id::text, content_hash FROM collected.snapshots
+		WHERE tenant_id = $1 AND datasource_id = $2 AND kind = $3 AND superseded_at IS NULL
+		FOR UPDATE`,
+		tenantID, snap.DatasourceID, snap.Kind).Scan(&currentID, &currentHash)
+	switch {
+	case errIsNoRows(err):
+		return false, nil // 首次采集，无当前版本
+	case err != nil:
+		return false, apierror.Wrap(apierror.CodeTimeseriesWriteFailed,
+			fmt.Errorf("load current snapshot: %w", err))
+	case currentHash == hash:
+		// 内容没变：只推进"最近一次观察到"的时间，不产生新行。
+		if _, err := tx.Exec(ctx, `UPDATE collected.snapshots
+			SET collected_at = GREATEST(collected_at, $2)
+			WHERE tenant_id = $3 AND id = $1::uuid`,
+			currentID, snap.CollectedAt, tenantID); err != nil {
+			return false, apierror.Wrap(apierror.CodeTimeseriesWriteFailed,
+				fmt.Errorf("touch snapshot %s: %w", currentID, err))
+		}
+		return true, nil
+	default:
+		// 内容变了：旧版本封版。
+		if _, err := tx.Exec(ctx, `UPDATE collected.snapshots
+			SET superseded_at = $2 WHERE tenant_id = $3 AND id = $1::uuid`,
+			currentID, snap.CollectedAt, tenantID); err != nil {
+			return false, apierror.Wrap(apierror.CodeTimeseriesWriteFailed,
+				fmt.Errorf("supersede snapshot %s: %w", currentID, err))
+		}
+		return false, nil
+	}
 }
 
 // snapshotPayload 序列化快照内容并算内容哈希。

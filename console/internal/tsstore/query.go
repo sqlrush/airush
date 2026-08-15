@@ -87,7 +87,8 @@ func layerFor(from time.Time, now time.Time) seriesLayer {
 // SeriesRange 查一条 series 在窗口内的曲线，按 step 分桶。
 // entityID 为空串表示无实体维度的指标。
 func (s *Store) SeriesRange(ctx context.Context, datasourceID, seriesName, entityID string,
-	from, to time.Time, step time.Duration) (_ []Point, err error) {
+	from, to time.Time, step time.Duration,
+) (_ []Point, err error) {
 	// 闭包而非 defer observeQuery(ctx, start, err)：defer 的实参在**注册时**求值，
 	// 那样记下的永远是 nil，错误率指标会恒为 0——一种看着有监控其实没有的失败。
 	start := time.Now()
@@ -98,8 +99,28 @@ func (s *Store) SeriesRange(ctx context.Context, datasourceID, seriesName, entit
 			fmt.Errorf("step must be positive, got %v", step))
 	}
 	layer := layerFor(from, time.Now())
+	sql := seriesRangeSQL(layer)
 
-	// 原始层按 value 现算；聚合层从已物化的列再卷一次（加权平均，防"平均的平均"失真）。
+	var points []Point
+	err = s.inTenantTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, sql, datasourceID, seriesName, entityID, from, to, step)
+		if err != nil {
+			return fmt.Errorf("query %s: %w", layer.relation, err)
+		}
+		defer rows.Close()
+		points, err = scanPoints(rows)
+		return err
+	})
+	if err != nil {
+		err = apierror.Wrap(apierror.CodeTimeseriesQueryFailed, err)
+		return nil, err
+	}
+	return points, nil
+}
+
+// seriesRangeSQL 按层生成区间查询。原始层按 value 现算；聚合层从已物化的列再卷一次
+// （加权平均，防"平均的平均"失真）。
+func seriesRangeSQL(layer seriesLayer) string {
 	var selectList string
 	if layer.preAggregated {
 		selectList = `avg_value * sample_count AS w, min_value, max_value, last_value, sample_count`
@@ -107,7 +128,7 @@ func (s *Store) SeriesRange(ctx context.Context, datasourceID, seriesName, entit
 		selectList = `value AS w, value AS min_value, value AS max_value, value AS last_value, 1::bigint AS sample_count`
 	}
 	// #nosec G201 —— relation/timeCol 来自 layerFor 的闭集常量，非用户输入。
-	sql := fmt.Sprintf(`
+	return fmt.Sprintf(`
 		WITH src AS (
 			SELECT %[2]s AS t, %[1]s
 			  FROM %[3]s
@@ -119,34 +140,25 @@ func (s *Store) SeriesRange(ctx context.Context, datasourceID, seriesName, entit
 		       min(min_value), max(max_value),
 		       last(last_value, t), sum(sample_count)
 		  FROM src GROUP BY 1 ORDER BY 1`, selectList, layer.timeCol, layer.relation)
+}
 
+func scanPoints(rows pgx.Rows) ([]Point, error) {
 	var points []Point
-	err = s.inTenantTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		rows, err := tx.Query(ctx, sql, datasourceID, seriesName, entityID, from, to, step)
-		if err != nil {
-			return fmt.Errorf("query %s: %w", layer.relation, err)
+	for rows.Next() {
+		var p Point
+		if err := rows.Scan(&p.At, &p.Avg, &p.Min, &p.Max, &p.Last, &p.Samples); err != nil {
+			return nil, fmt.Errorf("scan point: %w", err)
 		}
-		defer rows.Close()
-		for rows.Next() {
-			var p Point
-			if err := rows.Scan(&p.At, &p.Avg, &p.Min, &p.Max, &p.Last, &p.Samples); err != nil {
-				return fmt.Errorf("scan point: %w", err)
-			}
-			points = append(points, p)
-		}
-		return rows.Err()
-	})
-	if err != nil {
-		err = apierror.Wrap(apierror.CodeTimeseriesQueryFailed, err)
-		return nil, err
+		points = append(points, p)
 	}
-	return points, nil
+	return points, rows.Err()
 }
 
 // TopEntities 按某条 series 在窗口内的合计排序取前 N，带出实体标签。
 // 慢查询分析（spec-1.11）的主查询路径。
 func (s *Store) TopEntities(ctx context.Context, datasourceID, seriesName string,
-	from, to time.Time, n int) (_ []RankedEntity, err error) {
+	from, to time.Time, n int,
+) (_ []RankedEntity, err error) {
 	start := time.Now()
 	defer func() { observeQuery(ctx, start, err) }()
 

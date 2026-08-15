@@ -140,10 +140,14 @@ func TestSlowlogSnapshotExpansion(t *testing.T) {
 		DatasourceID: dsID, EngineFamily: "postgres", Kind: metrics.SnapshotKindSlowlog,
 		CatalogVersion: metrics.CatalogVersion, CollectedAt: now, Source: "pg_stat_statements",
 		SlowQueries: []metrics.SlowQueryEntry{
-			{QueryID: "111", Text: "SELECT * FROM orders WHERE id = $1",
-				Calls: 100, TotalMs: 5000, MeanMs: 50, MaxMs: 300, Rows: 100},
-			{QueryID: "222", Text: "SELECT * FROM users WHERE id = $1",
-				Calls: 10, TotalMs: 200, MeanMs: 20, MaxMs: 40, Rows: 10},
+			{
+				QueryID: "111", Text: "SELECT * FROM orders WHERE id = $1",
+				Calls: 100, TotalMs: 5000, MeanMs: 50, MaxMs: 300, Rows: 100,
+			},
+			{
+				QueryID: "222", Text: "SELECT * FROM users WHERE id = $1",
+				Calls: 10, TotalMs: 200, MeanMs: 20, MaxMs: 40, Rows: 10,
+			},
 		},
 	}
 	if err := store.PublishSnapshot(ctx, snap); err != nil {
@@ -329,10 +333,12 @@ func seedOtherTenant(t *testing.T, store *Store, tenantID string) {
 		  ON CONFLICT DO NOTHING`, []any{tenantID}},
 		{`INSERT INTO datasource_credentials (tenant_id, id, username, secret_ciphertext, key_id)
 		  VALUES ($1, $2, 'u', '\x00'::bytea, 'k1')`, []any{tenantID, otherCredID}},
-		{`INSERT INTO datasources (tenant_id, id, name, engine_family, connect_mode,
+		{
+			`INSERT INTO datasources (tenant_id, id, name, engine_family, connect_mode,
 			credential_id, host, port)
 		  VALUES ($1, $2, 'ds-b', 'postgres', 'direct', $3, 'h', 5432)`,
-			[]any{tenantID, otherDS, otherCredID}},
+			[]any{tenantID, otherDS, otherCredID},
+		},
 	} {
 		if _, err := store.pool.Exec(ctx, q.sql, q.args...); err != nil {
 			t.Fatalf("seed other tenant: %v", err)
