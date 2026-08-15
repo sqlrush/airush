@@ -21,6 +21,8 @@ type Server struct {
 	sealer          *credcrypto.Sealer
 	directConn      DirectTester
 	defaultTenantID string
+	// collected 是采集数据只读查询面（spec-1.5 D4）；nil 时相关路由返回 501。
+	collected CollectedReader
 }
 
 // DirectTester 是直连测试面（spec-1.17 directconn.Manager 满足）；接口化便于测试替身
@@ -36,6 +38,13 @@ func New(store *repo.Store, sealer *credcrypto.Sealer, directConn DirectTester, 
 		return nil, fmt.Errorf("httpapi: default tenant id %q is not a UUID", defaultTenantID)
 	}
 	return &Server{store: store, sealer: sealer, directConn: directConn, defaultTenantID: defaultTenantID}, nil
+}
+
+// WithCollected 注入采集数据查询面（spec-1.5 D4）。分开注入是为了让 spec-1.1 既有
+// 路由在无时序存储的形态（如仅跑迁移的进程）下照常构造。
+func (s *Server) WithCollected(r CollectedReader) *Server {
+	s.collected = r
+	return s
 }
 
 // Handler 返回带租户注入的 API 根 handler（观测中间件由 cmd 侧统一包裹）。
@@ -73,6 +82,12 @@ func (s *Server) Handler() http.Handler {
 	handle("GET /api/v1/connectors/{id}", s.getConnector)
 	handle("POST /api/v1/connectors", s.createConnector)
 	handle("POST /api/v1/connectors/{id}/revoke", s.revokeConnector)
+
+	// 采集数据只读面（spec-1.5 D4）：spec-1.10/1.11/1.12/1.13 的数据入口。
+	handle("GET /api/v1/datasources/{id}/series", s.seriesRange)
+	handle("GET /api/v1/datasources/{id}/top-entities", s.topEntities)
+	handle("GET /api/v1/datasources/{id}/snapshots/{kind}", s.latestSnapshot)
+	handle("GET /api/v1/datasources/{id}/snapshots/{kind}/history", s.snapshotHistory)
 
 	return s.tenantMiddleware(mux)
 }

@@ -41,10 +41,12 @@ func (s *Store) PublishSnapshot(ctx context.Context, snap metrics.Snapshot) erro
 func (s *Store) publishStateSnapshot(ctx context.Context, snap metrics.Snapshot) error {
 	payload, hash, err := snapshotPayload(snap)
 	if err != nil {
-		return apierror.Wrap(apierror.CodeTimeseriesWriteFailed, err)
+		return observeWrite(ctx, 0, apierror.Wrap(apierror.CodeTimeseriesWriteFailed, err))
 	}
 
-	return s.inTenantTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
+	// 快照按"份"计一次写入（行数 1），与读数流水的行数口径不同但同一计数器——
+	// 两者都是"一次落库"，失败率才是这个指标要回答的问题。
+	return observeWrite(ctx, 1, s.inTenantTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		tenantID, _ := tenancy.FromContext(ctx)
 
 		// 与当前版本比对。FOR UPDATE 防同一数据源两路采集并发时双写当前版本
@@ -91,7 +93,7 @@ func (s *Store) publishStateSnapshot(ctx context.Context, snap metrics.Snapshot)
 				fmt.Errorf("insert snapshot version: %w", err))
 		}
 		return nil
-	})
+	}))
 }
 
 // snapshotPayload 序列化快照内容并算内容哈希。

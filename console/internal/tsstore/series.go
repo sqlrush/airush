@@ -40,7 +40,7 @@ func (s *Store) Publish(ctx context.Context, batch metrics.Batch) error {
 	rows := make([]seriesRow, 0, len(batch.Metrics))
 	for _, m := range batch.Metrics {
 		if err := metrics.ValidateSeriesEntity(m.Name, ""); err != nil {
-			return apierror.Wrap(apierror.CodeTimeseriesUndeclaredSeries, err)
+			return observeWrite(ctx, 0, apierror.Wrap(apierror.CodeTimeseriesUndeclaredSeries, err))
 		}
 		rows = append(rows, seriesRow{
 			datasourceID: batch.DatasourceID,
@@ -52,9 +52,9 @@ func (s *Store) Publish(ctx context.Context, batch metrics.Batch) error {
 	if len(rows) == 0 {
 		return nil
 	}
-	return s.inTenantTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
+	return observeWrite(ctx, len(rows), s.inTenantTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		return s.insertSeries(ctx, tx, rows)
-	})
+	}))
 }
 
 // publishSlowlog 把一份慢查询快照展开成实体 + 读数写入。
@@ -79,7 +79,7 @@ func (s *Store) publishSlowlog(ctx context.Context, snap metrics.Snapshot) error
 		})
 		for _, v := range metrics.SlowQuerySeriesValues(q) {
 			if err := metrics.ValidateSeriesEntity(v.Name, entityID); err != nil {
-				return apierror.Wrap(apierror.CodeTimeseriesUndeclaredSeries, err)
+				return observeWrite(ctx, 0, apierror.Wrap(apierror.CodeTimeseriesUndeclaredSeries, err))
 			}
 			rows = append(rows, seriesRow{
 				datasourceID: snap.DatasourceID,
@@ -93,12 +93,12 @@ func (s *Store) publishSlowlog(ctx context.Context, snap metrics.Snapshot) error
 	if len(rows) == 0 {
 		return nil // 能力缺失或本轮无慢查询：不是错误
 	}
-	return s.inTenantTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
+	return observeWrite(ctx, len(rows), s.inTenantTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		if err := s.upsertEntities(ctx, tx, entities); err != nil {
 			return err
 		}
 		return s.insertSeries(ctx, tx, rows)
-	})
+	}))
 }
 
 // insertSeries 分批写读数。经 collected.series 视图而非基表——

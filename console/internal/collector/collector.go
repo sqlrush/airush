@@ -223,7 +223,10 @@ func (c *Collector) collectMetricsDirect(ctx context.Context, t target) error {
 	if err != nil {
 		return err
 	}
-	return c.sink.Publish(ctx, batch)
+	// 必须传 tctx 而非 ctx：落库 Sink 靠租户上下文开事务（SET LOCAL app.tenant_id），
+	// 传裸 ctx 会 fail-closed 成 AR_TENANT_CONTEXT_MISSING。内存 Sink 时期这个错
+	// 不可见——它根本不看租户，spec-1.5 换成 tsstore 后立刻暴露。
+	return c.sink.Publish(tctx, batch)
 }
 
 // collectSnapshotDirect 采一份快照。能力缺失（如未装 pg_stat_statements）是成功
@@ -235,7 +238,7 @@ func (c *Collector) collectSnapshotDirect(ctx context.Context, t target) error {
 	if err != nil {
 		return err
 	}
-	return c.snapshotSink.PublishSnapshot(ctx, snapshot)
+	return c.snapshotSink.PublishSnapshot(tctx, snapshot)
 }
 
 // targetsFor 把一条数据源展开为它的全部采集目标（每个 kind 一个）：direct 直采；

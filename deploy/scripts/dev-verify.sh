@@ -14,24 +14,37 @@ console_logs() {
   "${KCTL[@]}" logs deploy/airush-console --since="$1" 2>/dev/null || true
 }
 
-echo "== pods ready =="
-"${KCTL[@]}" wait --for=condition=Ready pod --all --timeout=120s >/dev/null || fail "存在未就绪 pod"
+echo "== workloads ready =="
+# 按工作负载等而不是 `wait pod --all`：dev-up 末尾会 rollout restart，旧 pod 正在
+# Terminating，它们永远不会变 Ready，--all 必然超时——与集群是否健康无关的假失败。
+for obj in $("${KCTL[@]}" get deploy,statefulset -o name); do
+  "${KCTL[@]}" rollout status "$obj" --timeout=120s >/dev/null || fail "$obj 未就绪"
+done
 "${KCTL[@]}" get pods --no-headers
 
 echo "== migrate applied（领域表 + 版本） =="
+# 期望版本由迁移文件数推导，不写死——写死会在每次新增迁移时无声失准
+# （0004 加入时正好踩到：断言还停在 3）。
+want=$(ls console/migrations/*.up.sql | wc -l | tr -d '[:space:]')
+# 2>/dev/null 丢弃 psql 的 stderr：TimescaleDB 镜像会对沿用的旧数据目录报
+# collation version 警告，混进捕获会把版本串解析歪。命令失败仍由 || fail 兜住。
 v=$("${KCTL[@]}" exec airush-pg-0 -- psql -U postgres -d airush -tAc \
-  "SELECT version || ':' || dirty FROM schema_migrations") || fail "查询 schema_migrations 失败"
-[ "$v" = "3:false" ] || fail "迁移版本异常: $v（期望 3:false，spec-1.2 0003 就位）"
+  "SELECT version || ':' || dirty FROM schema_migrations" 2>/dev/null | tr -d '[:space:]') \
+  || fail "查询 schema_migrations 失败"
+# 变量后面紧跟全角括号一律写 ${var}：bash 在 UTF-8 locale 下会把多字节字符
+# 当成变量名的一部分，"$v（" 会被解析成变量 "v（" → unbound variable。
+# 这类写法藏在 fail 分支里更阴——只有真出问题那次才炸，且炸的是脚本自己。
+[ "$v" = "${want}:false" ] || fail "迁移版本异常: ${v}（期望 ${want}:false，共 $want 个迁移文件）"
 t=$("${KCTL[@]}" exec airush-pg-0 -- psql -U postgres -d airush -tAc \
   "SELECT count(*) FROM information_schema.tables WHERE table_name IN ('tenants','datasources','agents')")
-[ "$t" = "3" ] || fail "领域表缺失（tenants/datasources/agents 应为 3，得 $t）"
+[ "$t" = "3" ] || fail "领域表缺失（tenants/datasources/agents 应为 3，得 ${t}）"
 col=$("${KCTL[@]}" exec airush-pg-0 -- psql -U postgres -d airush -tAc \
   "SELECT count(*) FROM information_schema.columns WHERE table_name='connectors' AND column_name='enroll_token_hash'")
 [ "$col" = "1" ] || fail "connectors.enroll_token_hash 缺失（0003 未应用）"
 seed=$("${KCTL[@]}" exec airush-pg-0 -- psql -U postgres -d airush -tAc \
   "SELECT count(*) FROM tenants WHERE slug='dev'")
 [ "$seed" = "1" ] || fail "dev 租户 seed 缺失"
-echo "  migrate version=3 dirty=false, 领域表/seed/接入列就位"
+echo "  migrate version=$v, 领域表/seed/接入列就位"
 
 echo "== gateway /healthz（port-forward） =="
 "${KCTL[@]}" port-forward svc/airush-gateway 18081:8081 >/dev/null 2>&1 &
@@ -107,8 +120,46 @@ for kind in slowlog schema config; do
   echo "  快照 $kind OK"
 done
 
-echo "== connector 接入 e2e（spec-1.2：enroll → session → online） =="
-# 幂等前置（spec-0.12 §3 从零语义）：清理上次遗留的 dev-verify-conn
+echo "== 落库与查询面（spec-1.5：采集数据真的进了 TimescaleDB 并读得出来） =="
+# 前面几段验的是"采到了"（日志心跳），这一段验的是"存住了且查得出来"——
+# 采集正常但落库静默失败，是最容易漏过去的一类故障：日志一片祥和，数据一片空白。
+tsver=$("${KCTL[@]}" exec airush-pg-0 -- psql -U postgres -d airush -tAc \
+  "SELECT extversion FROM pg_extension WHERE extname='timescaledb'" | tr -d '[:space:]')
+[ -n "$tsver" ] || fail "timescaledb 扩展未安装（0004 迁移未生效？）"
+echo "  timescaledb 扩展 OK（${tsver}）"
+
+# 隔离形态自检：应用角色对基表 schema 必须无 USAGE（AD-10 等效形态第一道锁）。
+usage=$("${KCTL[@]}" exec airush-pg-0 -- psql -U postgres -d airush -tAc \
+  "SELECT has_schema_privilege('airush_app','tsdb','USAGE')" | tr -d '[:space:]')
+[ "$usage" = "f" ] || fail "airush_app 对 tsdb schema 有 USAGE —— 等效隔离第一道锁失效"
+echo "  租户隔离基线 OK（应用角色够不到基表 schema）"
+
+"${KCTL[@]}" port-forward svc/airush-console 18080:8080 >/dev/null 2>&1 &
+PF=$!
+sleep 2
+ok=""
+for i in $(seq 1 30); do
+  n=$(curl -sf "http://localhost:18080/api/v1/datasources/$cdsid/series?name=db.connections.active&step=1h" \
+    | grep -o '"at"' | wc -l | tr -d '[:space:]')
+  if [ "${n:-0}" -ge 1 ]; then ok="1"; break; fi
+  sleep 10
+done
+[ -n "$ok" ] || { kill $PF 2>/dev/null; fail "查询面未返回任何指标点——采到了但没落库（或没读出来）"; }
+echo "  指标落库 + 查询面 OK"
+
+# 表结构快照必须能取到当前版本（慢查询走 series 面，故不在此路径）。
+code=$(curl -s -o /tmp/airush-snap.json -w '%{http_code}' \
+  "http://localhost:18080/api/v1/datasources/$cdsid/snapshots/schema")
+kill $PF 2>/dev/null
+[ "$code" = "200" ] || fail "表结构快照未落库 http=$code $(cat /tmp/airush-snap.json)"
+grep -q '"tables"' /tmp/airush-snap.json || fail "快照 payload 无 tables 字段"
+echo "  快照落库 + 查询面 OK"
+
+echo "== connector 接入 e2e（spec-1.2：enroll → session → online；spec-1.5：通道落库） =="
+# 幂等前置（spec-0.12 §3 从零语义）：清理上次遗留的 dev-verify-conn。
+# 数据源必须先删——datasources.connector_id 的外键无 ON DELETE，先删连接器会被 RESTRICT 拦住。
+"${KCTL[@]}" exec airush-pg-0 -- psql -U postgres -d airush -c \
+  "DELETE FROM datasources WHERE name='dev-verify-conn-ds'" >/dev/null 2>&1
 "${KCTL[@]}" exec airush-pg-0 -- psql -U postgres -d airush -c \
   "DELETE FROM connectors WHERE name='dev-verify-conn'" >/dev/null 2>&1
 "${KCTL[@]}" port-forward svc/airush-console 18080:8080 >/dev/null 2>&1 &
@@ -161,6 +212,9 @@ spec:
         - { name: AIRUSH_CONNECTOR_CONFIG_DIR, value: /tmp/conn }
         - { name: AIRUSH_CONNECTOR_ENROLL_ADDR, value: "airush-gateway:8082" }
         - { name: AIRUSH_CONNECTOR_SESSION_ADDR, value: "airush-gateway:8083" }
+        # 被采库凭据只出现在**连接器侧**（AD-4：Connector 模式凭据不入平台）。
+        # 这里用的是 kind 内置 PG 的开发口令，与 values-dev.yaml 同一个值。
+        - { name: AIRUSH_CONNECTOR_DB_URL, value: "postgres://postgres:airush-dev-pg@airush-pg:5432/airush?sslmode=disable" }
 YAML
 ok=""
 for i in $(seq 1 30); do
@@ -169,13 +223,50 @@ for i in $(seq 1 30); do
   if [ "$st" = "online" ]; then ok="1"; break; fi
   sleep 2
 done
-"${KCTL[@]}" delete pod airush-devverify-connector --ignore-not-found >/dev/null 2>&1
-[ -n "$ok" ] || fail "connector 未达 online 状态（末次: ${st:-none}）"
+[ -n "$ok" ] || { "${KCTL[@]}" delete pod airush-devverify-connector --ignore-not-found >/dev/null 2>&1
+  fail "connector 未达 online 状态（末次: ${st:-none}）"; }
 echo "  connector e2e OK（enroll 签证 → mTLS 会话 → 心跳 → online）"
+
+# spec-1.5 T22：Connector 通道采集也要落库。与 T21（Direct 通道）合起来证明
+# 两条通道在存储侧等价——Connector 侧多了 gateway → console 内部 API 这一跳
+# （§8 Q5 选项 A：gateway 不持有 DB 连接），这一跳出问题只会表现为"没数据"。
+"${KCTL[@]}" port-forward svc/airush-console 18080:8080 >/dev/null 2>&1 &
+PF=$!
+sleep 2
+code=$(curl -s -o /tmp/airush-conn-ds.json -w '%{http_code}' -X POST http://localhost:18080/api/v1/datasources \
+  -H 'Content-Type: application/json' -d "{
+    \"name\":\"dev-verify-conn-ds\",\"engine_family\":\"postgres\",\"engine\":\"postgres\",
+    \"connect_mode\":\"connector\",\"connector_id\":\"${cid}\",
+    \"host\":\"airush-pg\",\"port\":5432,\"database_name\":\"airush\"}")
+if [ "$code" != "201" ] && [ "$code" != "409" ]; then
+  kill $PF 2>/dev/null
+  "${KCTL[@]}" delete pod airush-devverify-connector --ignore-not-found >/dev/null 2>&1
+  fail "创建 connector 模式数据源失败 http=${code} $(cat /tmp/airush-conn-ds.json)"
+fi
+conndsid=$(curl -sf http://localhost:18080/api/v1/datasources \
+  | sed -n 's/.*"id":"\([0-9a-f-]*\)","name":"dev-verify-conn-ds".*/\1/p')
+# 显式判空：id 取空时下面的 URL 会变成 /datasources//series，稳定 404 → 循环超时，
+# 报出来的却是"通道没落库"。那条错误信息会把人带去查错方向。
+if [ -z "$conndsid" ]; then
+  kill $PF 2>/dev/null
+  "${KCTL[@]}" delete pod airush-devverify-connector --ignore-not-found >/dev/null 2>&1
+  fail "未取到 dev-verify-conn-ds 数据源 id"
+fi
+ok=""
+for i in $(seq 1 30); do
+  n=$(curl -sf "http://localhost:18080/api/v1/datasources/$conndsid/series?name=db.connections.active&step=1h" \
+    | grep -o '"at"' | wc -l | tr -d '[:space:]')
+  if [ "${n:-0}" -ge 1 ]; then ok="1"; break; fi
+  sleep 10
+done
+kill $PF 2>/dev/null
+"${KCTL[@]}" delete pod airush-devverify-connector --ignore-not-found >/dev/null 2>&1
+[ -n "$ok" ] || fail "Connector 通道采集未落库——gateway → console 上报这一跳断了（spec-1.5 T22）"
+echo "  Connector 通道落库 OK（连接器直采客户库 → gateway → console → TimescaleDB）"
 
 echo "== helm 幂等（再次 upgrade 应零变更零重启） =="
 before=$("${KCTL[@]}" get pods -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | sort)
-helm upgrade --install airush deploy/charts/airush \
+helm upgrade --install airush deploy/charts/airush --kube-context kind-airush-dev \
   -f deploy/charts/airush/values-dev.yaml --wait --timeout 3m >/dev/null || fail "重复 upgrade 失败"
 after=$("${KCTL[@]}" get pods -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | sort)
 [ "$before" = "$after" ] || fail "幂等 upgrade 引发 pod 重建"

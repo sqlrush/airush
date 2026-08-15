@@ -33,6 +33,20 @@ spec:
         {{- include "airush.labels" . | nindent 8 }}
         {{- include "airush.selector" "console" | nindent 8 }}
     spec:
+      {{- if not .Values.console.dbUrl }}
+      # console 启动即 ping 库并 fail fast（有意为之）。冷启动的 kind 集群上 CoreDNS
+      # 比业务 Pod 晚就绪，console 会因解析不到 airush-pg 连续退出，CrashLoopBackOff
+      # 的指数退避把就绪时间推过 helm --wait 5m —— 实测过一次。initContainer 等 PG
+      # 起来再放行：保留 fail fast 语义，同时不吃退避惩罚。
+      initContainers:
+        - name: wait-pg
+          image: {{ .Values.storage.pg.image }}
+          command: ["sh", "-c", "until pg_isready -h {{ .Release.Name }}-pg -U postgres; do sleep 2; done"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 999
+      {{- end }}
       containers:
         - name: console
           image: "{{ .Values.image.registry }}/console:{{ .Values.image.tag }}"

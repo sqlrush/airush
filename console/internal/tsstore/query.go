@@ -87,7 +87,12 @@ func layerFor(from time.Time, now time.Time) seriesLayer {
 // SeriesRange 查一条 series 在窗口内的曲线，按 step 分桶。
 // entityID 为空串表示无实体维度的指标。
 func (s *Store) SeriesRange(ctx context.Context, datasourceID, seriesName, entityID string,
-	from, to time.Time, step time.Duration) ([]Point, error) {
+	from, to time.Time, step time.Duration) (_ []Point, err error) {
+	// 闭包而非 defer observeQuery(ctx, start, err)：defer 的实参在**注册时**求值，
+	// 那样记下的永远是 nil，错误率指标会恒为 0——一种看着有监控其实没有的失败。
+	start := time.Now()
+	defer func() { observeQuery(ctx, start, err) }()
+
 	if step <= 0 {
 		return nil, apierror.Wrap(apierror.CodeTimeseriesQueryFailed,
 			fmt.Errorf("step must be positive, got %v", step))
@@ -116,7 +121,7 @@ func (s *Store) SeriesRange(ctx context.Context, datasourceID, seriesName, entit
 		  FROM src GROUP BY 1 ORDER BY 1`, selectList, layer.timeCol, layer.relation)
 
 	var points []Point
-	err := s.inTenantTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
+	err = s.inTenantTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, sql, datasourceID, seriesName, entityID, from, to, step)
 		if err != nil {
 			return fmt.Errorf("query %s: %w", layer.relation, err)
@@ -132,7 +137,8 @@ func (s *Store) SeriesRange(ctx context.Context, datasourceID, seriesName, entit
 		return rows.Err()
 	})
 	if err != nil {
-		return nil, apierror.Wrap(apierror.CodeTimeseriesQueryFailed, err)
+		err = apierror.Wrap(apierror.CodeTimeseriesQueryFailed, err)
+		return nil, err
 	}
 	return points, nil
 }
@@ -140,7 +146,10 @@ func (s *Store) SeriesRange(ctx context.Context, datasourceID, seriesName, entit
 // TopEntities 按某条 series 在窗口内的合计排序取前 N，带出实体标签。
 // 慢查询分析（spec-1.11）的主查询路径。
 func (s *Store) TopEntities(ctx context.Context, datasourceID, seriesName string,
-	from, to time.Time, n int) ([]RankedEntity, error) {
+	from, to time.Time, n int) (_ []RankedEntity, err error) {
+	start := time.Now()
+	defer func() { observeQuery(ctx, start, err) }()
+
 	if n <= 0 {
 		n = 10
 	}
@@ -163,7 +172,7 @@ func (s *Store) TopEntities(ctx context.Context, datasourceID, seriesName string
 		 ORDER BY t.total DESC`
 
 	var out []RankedEntity
-	err := s.inTenantTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
+	err = s.inTenantTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, sql, datasourceID, seriesName, from, to, n, metrics.EntityKindQuery)
 		if err != nil {
 			return fmt.Errorf("query top entities: %w", err)
@@ -180,16 +189,20 @@ func (s *Store) TopEntities(ctx context.Context, datasourceID, seriesName string
 		return rows.Err()
 	})
 	if err != nil {
-		return nil, apierror.Wrap(apierror.CodeTimeseriesQueryFailed, err)
+		err = apierror.Wrap(apierror.CodeTimeseriesQueryFailed, err)
+		return nil, err
 	}
 	return out, nil
 }
 
 // LatestSnapshot 取某数据源某 kind 的当前版本（含 payload）。
 // 无快照时返回 (nil, nil)——"还没采到"是正常状态，不是错误。
-func (s *Store) LatestSnapshot(ctx context.Context, datasourceID, kind string) (*SnapshotWithPayload, error) {
+func (s *Store) LatestSnapshot(ctx context.Context, datasourceID, kind string) (_ *SnapshotWithPayload, err error) {
+	start := time.Now()
+	defer func() { observeQuery(ctx, start, err) }()
+
 	var out *SnapshotWithPayload
-	err := s.inTenantTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
+	err = s.inTenantTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		var meta SnapshotMeta
 		var payload []byte
 		err := tx.QueryRow(ctx, `SELECT id::text, kind, source, capability_missing, truncated,
@@ -213,19 +226,23 @@ func (s *Store) LatestSnapshot(ctx context.Context, datasourceID, kind string) (
 		return nil
 	})
 	if err != nil {
-		return nil, apierror.Wrap(apierror.CodeTimeseriesQueryFailed, err)
+		err = apierror.Wrap(apierror.CodeTimeseriesQueryFailed, err)
+		return nil, err
 	}
 	return out, nil
 }
 
 // SnapshotHistory 列出版本链（新→旧，不含 payload）。
 // "这个库最近改过什么"从这里起步：拿到两个版本 ID 再各自取 payload 做 diff。
-func (s *Store) SnapshotHistory(ctx context.Context, datasourceID, kind string, limit int) ([]SnapshotMeta, error) {
+func (s *Store) SnapshotHistory(ctx context.Context, datasourceID, kind string, limit int) (_ []SnapshotMeta, err error) {
+	start := time.Now()
+	defer func() { observeQuery(ctx, start, err) }()
+
 	if limit <= 0 {
 		limit = 20
 	}
 	var out []SnapshotMeta
-	err := s.inTenantTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
+	err = s.inTenantTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, `SELECT id::text, kind, source, capability_missing, truncated,
 				content_hash, collected_at, created_at, superseded_at
 			FROM collected.snapshots
@@ -247,7 +264,8 @@ func (s *Store) SnapshotHistory(ctx context.Context, datasourceID, kind string, 
 		return rows.Err()
 	})
 	if err != nil {
-		return nil, apierror.Wrap(apierror.CodeTimeseriesQueryFailed, err)
+		err = apierror.Wrap(apierror.CodeTimeseriesQueryFailed, err)
+		return nil, err
 	}
 	return out, nil
 }

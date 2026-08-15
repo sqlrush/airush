@@ -11,6 +11,7 @@ package tsstore
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -40,8 +41,9 @@ var (
 // DefaultBatchMaxRows 是未配置时的单批行数上限。
 const DefaultBatchMaxRows = 5000
 
-// New 建池并 ping（启动期 fail fast，与 repo.New 同口径）。
-func New(ctx context.Context, dbURL string, batchMaxRows int) (*Store, error) {
+// New 建池并 ping（启动期 fail fast，与 repo.New 同口径），随后把实际生效的
+// TimescaleDB 策略打进日志（logger 可为 nil，仅测试场景）。
+func New(ctx context.Context, dbURL string, batchMaxRows int, logger *slog.Logger) (*Store, error) {
 	if batchMaxRows <= 0 {
 		batchMaxRows = DefaultBatchMaxRows
 	}
@@ -53,7 +55,9 @@ func New(ctx context.Context, dbURL string, batchMaxRows int) (*Store, error) {
 		pool.Close()
 		return nil, fmt.Errorf("tsstore: ping: %w", err)
 	}
-	return &Store{pool: pool, batchMaxRows: batchMaxRows}, nil
+	s := &Store{pool: pool, batchMaxRows: batchMaxRows}
+	s.logPolicies(ctx, logger)
+	return s, nil
 }
 
 // NewWithPool 复用既有池（测试与同进程共享池场景）。

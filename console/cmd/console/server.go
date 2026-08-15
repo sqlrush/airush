@@ -78,6 +78,7 @@ func buildHandler(cfg appConfig, store *repo.Store, sealer *credcrypto.Sealer, d
 	if err != nil {
 		return nil, fmt.Errorf("init httpapi: %w", err)
 	}
+	api = api.WithCollected(ts)
 	ca, err := pki.Load([]byte(cfg.CACert), []byte(cfg.CAKey))
 	if err != nil {
 		return nil, fmt.Errorf("load connector CA: %w", err)
@@ -140,7 +141,7 @@ func runServer(cfg appConfig, provider *obs.Provider, version string) error {
 	}
 	defer direct.Close()
 
-	ts, err := tsstore.New(ctx, cfg.DBURL, cfg.TSBatchMaxRows)
+	ts, err := tsstore.New(ctx, cfg.DBURL, cfg.TSBatchMaxRows, provider.Logger)
 	if err != nil {
 		return fmt.Errorf("init timeseries store: %w", err)
 	}
