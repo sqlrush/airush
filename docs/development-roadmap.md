@@ -37,8 +37,10 @@
    但打通全链路（接入[直连/Connector]→采集→agent→skill→控制台），宁可窄而通，不可宽而断；
    MySQL 协议族移至 Stage 3；
 3. **安全前置**：凭据边界、租户边界、审计从 Stage 1 就按终态设计埋点，Stage 2 只是完善而非重构；
-4. **存储渐进**：MVP 用 PostgreSQL 全家桶（PG+TimescaleDB+pgvector），Neo4j/Graphiti 到 Stage 3
-   有真实记忆需求时引入，避免早期运维负担；
+4. **存储渐进**（2026-08-15 修订）：MVP 用 PostgreSQL 全家桶（PG+TimescaleDB+pgvector）；
+   Neo4j/Graphiti **提前到 Stage 1**——user 定"先把智能体框架全部搭建出来，再做具体的
+   数据库功能"，记忆/知识库是智能体框架的一部分，不再等 Stage 3。原"避免早期运维负担"
+   的考量让位于框架完整性；运维负担由 Helm 内置形态 + spec-1.18 的备份/恢复 DoD 承接；
 5. **部署与商业化取向（2026-08-10 user 定）**：当前以**本地部署 k8s 为主**——存储
    Helm 内置（storage.builtin）为主形态，云托管为后续演进选项；**不做计费系统**，
    LLM 用量统计仅用于成本观测与配额（spec-1.7），不进入计费/账单链路；
@@ -49,8 +51,8 @@
 
 ```
 Stage 0 → Stage 1 → Stage 2 → Stage 3 → Stage 4
-基础设施 → 单租户MVP → 多租户安全 → 引擎与记忆 → 生产化GA
-(~6 周)   (~12-14 周)  (~8-10 周)   (~10-12 周)  (~8-12 周)
+基础设施 → 单租户MVP(含框架+记忆) → 多租户安全 → 引擎与深化 → 生产化GA
+(~6 周)   (~16-20 周，08-15 重估)  (~8-10 周)   (~8-10 周)  (~8-12 周)
 ```
 
 **禁止跨 Stage 跳跃**：Stage N 验收 spec 未通过不得开始 Stage N+1 功能点。
@@ -61,9 +63,9 @@ Stage 0 → Stage 1 → Stage 2 → Stage 3 → Stage 4
 | Stage | 交付物 | 验收标准 |
 |---|---|---|
 | 0 | 工程基础设施 | CI 全绿；hello-world 服务经 Helm 部署到 kind 集群；测试/lint/构建链路全通 |
-| 1 | 单租户端到端 MVP | 真实 openGauss 实例接入（直连 + Connector 双模式）→ 自动巡检出报告 → 诊断对话可用；全程审计留痕 |
+| 1 | 单租户端到端 MVP | 真实 openGauss 实例接入（直连 + Connector 双模式）→ 自动巡检出报告 → 诊断对话可用；**agent 记忆跨会话生效 + 知识库问答可用**（2026-08-15 提前）；全程审计留痕 |
 | 2 | 多租户可售版本 | 双租户隔离验证（数据/证书/配额互不可见）；动作类操作走审批流；安全扫描通过 |
-| 3 | 全引擎 + 智能深化 | 三协议族接入可用；agent 记忆跨会话生效；合规检查包出报告 |
+| 3 | 全引擎 + 智能深化 | 三协议族接入可用；性能基线学习生效；合规检查包出报告（记忆跨会话已提前至 Stage 1） |
 | 4 | GA | HA 演练通过；本地部署打包可交付 |
 
 ## 2. Stage 0：工程基础设施（12 个功能点）
@@ -93,12 +95,24 @@ Stage 0 → Stage 1 → Stage 2 → Stage 3 → Stage 4
 - [ ] hello-world 服务的日志/指标/trace 在本地可观测栈中可见；
 - [ ] 控制面 PG 迁移框架跑通第一个 migration。
 
-## 3. Stage 1：单租户端到端 MVP（16 个功能点，**openGauss（PG 协议族）**）
+## 3. Stage 1：单租户端到端 MVP（18 个功能点，**openGauss（PG 协议族）**）
 
 > 标题原写"MySQL 协议族"，是 2026-08-10 蓝本对调（MySQL→openGauss）时漏改的陈迹，
 > 2026-08-14 user 指出并更正。MVP 蓝本是 **openGauss**；MySQL 族在 Stage 3（spec-3.1）。
+>
+> **2026-08-15 顺序修订（user 定）**："先把智能体框架全部搭建出来，再做具体的数据库功能。"
+> 采集组（1.1-1.5）已 shipped，此后按 **框架组 → 记忆/知识库组 → 数据库功能组** 排：
+> - 框架组：1.7 LLM 网关 → 1.8 Agent Runtime → 1.9 Skill 框架；
+> - 记忆/知识库组（**自 Stage 3 提前**，编号追加 1.18-1.20，原 3.4/3.5/3.6 编号保留不复用）；
+> - 数据库功能组：1.10/1.11/1.12 三个 skill、1.13/1.14 前端、1.15 审计、1.16 验收；
+> - **1.6 脱敏移出 MVP**（user 定"脱敏不在 MVP 里"），归 Stage 2 安全组排期，编号保留。
+>   AD-3 不受损：MVP 内 skill 消费的是采集侧**规范化**产物（字面量已占位），真实客户
+>   数据出内网前的二次加固在 Stage 2 补齐。
+>
+> 工期：Stage 1 原估 12-14 周，记忆/知识库组提前带来 **+4-6 周**（Neo4j+Graphiti 引入、
+> 记忆服务、知识库管道），§0.2 的"偏差超 1 个 milestone 须重估"在此触发——本修订即重估。
 
-### 3.1 功能点清单
+### 3.1 功能点清单（按当前排定顺序）
 
 | Spec | 名称 | 一句话说明 |
 |---|---|---|
@@ -108,10 +122,12 @@ Stage 0 → Stage 1 → Stage 2 → Stage 3 → Stage 4
 | spec-1.3 | openGauss（PG 协议族）采集：指标 | 周期采集性能指标，结构化上报，通道无关（直连/Connector 同一探针） |
 | spec-1.4 | openGauss（PG 协议族）采集：慢日志与元数据 | 慢查询、表结构、实例配置采集 |
 | spec-1.5 | 数据接入层与时序存储 | 接入网关落库 TimescaleDB，数据模型定版 |
-| spec-1.6 | 客户侧脱敏规则引擎 | Connector 内置脱敏，规则可配置 |
-| spec-1.7 | LLM 网关 | LiteLLM 集成、模型路由、按租户配额与用量统计 |
-| spec-1.8 | Agent Runtime 骨架（codexgo 抽核服务化） | 核心包 vendor、threadstore→PG、租户上下文、会话调度器（见 agent-core-design.md） |
-| spec-1.9 | Skill 框架（MCP） | 注册表、MCP streamable HTTP 调用面、幂等与背压（见 skill-runtime-design.md） |
+| **spec-1.7** | LLM 网关 | LiteLLM 集成、模型路由、按租户配额与用量统计 |
+| **spec-1.8** | Agent Runtime 骨架（codexgo 抽核服务化） | 核心包 vendor、threadstore→PG、租户上下文、会话调度器、无状态 Pod 排水（见 agent-core-design.md） |
+| **spec-1.9** | Skill 框架（MCP） | 注册表、MCP streamable HTTP 调用面、幂等与背压、skill 容器 Deployment 形态（见 skill-runtime-design.md） |
+| **spec-1.18** | 记忆库 Graphiti+Neo4j 集成（原 spec-3.4，2026-08-15 提前） | Neo4j Helm 内置、Graphiti 记忆服务、写读 API、备份/恢复（见 memory-knowledge-architecture.md） |
+| **spec-1.19** | agent 记忆读写策略与生命周期（原 spec-3.5，提前） | 记忆分层/归属、沉淀与遗忘策略、跨会话生效 |
+| **spec-1.20** | 知识库服务（图谱 + pgvector RAG）（原 spec-3.6，提前） | 文档摄入管道、embedding 服务、双向量索引、检索面 |
 | spec-1.10 | skill：巡检报告 | 基于采集数据生成实例健康巡检报告 |
 | spec-1.11 | skill：慢查询分析 | 慢日志聚类、执行计划解读、优化建议 |
 | spec-1.12 | skill：健康诊断对话 | 交互式诊断，组合调用采集数据与其他 skill |
@@ -119,6 +135,7 @@ Stage 0 → Stage 1 → Stage 2 → Stage 3 → Stage 4
 | spec-1.14 | 控制台前端：通用对话工作台 | 通用对话窗口（诊断/问答/长任务，登录默认落地页）、内容块渲染器注册表、历史会话管理 |
 | spec-1.15 | 审计日志基线 | 全链路审计事件模型与查询界面 |
 | spec-1.16 | Stage 1 验收 | 真实 **openGauss** 端到端 demo + 性能/成本基线报告（原写 MySQL，2026-08-14 更正） |
+| ~~spec-1.6~~ | ~~客户侧脱敏规则引擎~~ | **移出 MVP**（2026-08-15 user 定），归 Stage 2 安全组排期，编号保留不复用 |
 
 ### 3.2 Stage 1 验收标准
 
@@ -127,24 +144,27 @@ Stage 0 → Stage 1 → Stage 2 → Stage 3 → Stage 4
 - [ ] 自动巡检产出报告，慢查询分析给出可执行建议；
 - [ ] 诊断对话能回答"这个实例昨晚为什么慢"级别的问题并引用采集数据；
 - [ ] 所有 agent/skill 调用与 LLM 用量有审计与成本记录；
-- [ ] 单实例采集端到端延迟与平台资源占用有基线数据。
+- [ ] 单实例采集端到端延迟与平台资源占用有基线数据；
+- [ ] **agent 记忆跨会话生效**（自 Stage 3 验收标准提前，随 1.18/1.19）：新会话能引用
+      上一会话沉淀的实例记忆；agent-runtime pod 重建后记忆不丢；
+- [ ] **知识库问答可用**（随 1.20）：对已摄入文档的问题能给出带出处的回答。
 
 ## 4. Stage 2-4：粗粒度规划（进入前细化）
 
 > 以下清单在对应 Stage 启动前按届时认知细化，允许增删，但增删需更新本文档。
 
-### 4.1 Stage 2：多租户与安全（10 个功能点）
+### 4.1 Stage 2：多租户与安全（11 个功能点）
 
 spec-2.1 租户模型与 RLS 全面启用 / spec-2.2 认证与 RBAC / spec-2.3 Connector 证书签发与生命周期 /
 spec-2.4 客户侧凭据保管 / spec-2.5 审批工作流与一次性令牌 / spec-2.6 受控执行器与操作白名单 /
 spec-2.7 平台侧 secret 管理 / spec-2.8 速率限制与租户配额 / spec-2.9 安全扫描与渗透基线 /
-spec-2.10 Stage 2 验收。
+**spec-1.6 客户侧脱敏规则引擎（自 Stage 1 移入，2026-08-15；编号保留）** / spec-2.10 Stage 2 验收。
 
-### 4.2 Stage 3：引擎扩展与知识/记忆（10 个功能点）
+### 4.2 Stage 3：引擎扩展与深化（7 个功能点）
 
 spec-3.1 MySQL 协议族接入（2026-08-10 与 PG 族对调）/ spec-3.2 达梦接入 / spec-3.3 引擎特有巡检包（TiDB/OceanBase）/
-spec-3.4 记忆库 Graphiti+Neo4j 集成 / spec-3.5 agent 记忆读写策略与生命周期 /
-spec-3.6 知识库服务（图谱 + pgvector RAG）/ spec-3.7 性能基线学习 / spec-3.8 合规检查包 /
+~~spec-3.4 记忆库~~ ~~spec-3.5 记忆策略~~ ~~spec-3.6 知识库~~（**提前至 Stage 1 为 1.18/1.19/1.20**，2026-08-15；
+原编号保留不复用）/ spec-3.7 性能基线学习 / spec-3.8 合规检查包 /
 spec-3.9 巡检调度中心 / spec-3.10 Stage 3 验收。
 
 ### 4.3 Stage 4：生产化（6 个功能点）
