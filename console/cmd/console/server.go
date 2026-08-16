@@ -199,7 +199,7 @@ func ensureDefaultLLMQuota(ctx context.Context, cfg appConfig, store *repo.Store
 	var created bool
 	err := store.InTenantTx(tctx, func(ctx context.Context, tx repo.Tx) error {
 		var err error
-		created, err = repo.EnsureLLMQuota(ctx, tx, cfg.LLMDefaultTokenBudget)
+		created, err = repo.EnsureLLMQuota(ctx, tx, int64(cfg.LLMDefaultTokenBudget))
 		return err
 	})
 	if err != nil {

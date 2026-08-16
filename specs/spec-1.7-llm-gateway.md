@@ -436,3 +436,16 @@ func (c *Client) ChatCompletion(ctx context.Context, req ChatRequest) (ChatRespo
 - **spec-2.8**（速率限制与租户配额）：并发/RPS 限流 + 本地令牌桶兜底 + 按 agent 预算；
 - **spec-4.5**（私有化打包）：本地模型经 `hosted_vllm/`、`ollama/` 前缀接入；若替换 LiteLLM，
   按解耦表路径换组件。
+
+---
+
+## §11 实施 Changelog（frozen 后追加，不重写正文）
+
+| 日期 | 变更 |
+|---|---|
+| 2026-08-15 | **错误码：3 个计划新码 → 1 个新码 + 2 个复用**。spec-0.8 已预留 `AR_UPSTREAM_LLM_FAILED`（502）、`AR_UPSTREAM_LLM_TIMEOUT`（504）、`AR_QUOTA_EXCEEDED`（429），语义与本 spec 的 `AR_LLM_UPSTREAM_FAILED` / `AR_LLM_QUOTA_EXCEEDED` 完全重合，重复造码会让同一故障有两个码。只新增 `AR_UPSTREAM_LLM_MODEL_UNKNOWN`（E1/400：调用方配置错误，不是上游故障）。§2.4/§3.4/§4 里的旧名按此对照 |
+| 2026-08-15 | **R4 内存基线实测修正**：LiteLLM 1.96.2 无 DB 形态空载 **稳态 ~1.05 GiB、启动峰值 ~1.14 GiB**（`probe-litellm/mem.sh`），是 R4 估的 300-400 MB 的 3 倍。limit < 1.2 GiB 在 kind 上被 OOM 杀——表现为 exit 137、日志为空、`reason=Error` 而非 `OOMKilled`（被杀的是 entrypoint `prod_entrypoint.sh` 的子进程，PID 1 以 137 退出）。生产 requests 1280Mi / limit 2Gi，dev limit 1.5Gi；同时加 startupProbe（Python 冷启动慢，liveness 不能在 import 完成前接管）。这条把"Python 进程重"从定性变成了定量：**LiteLLM 单副本 ≈ 三个 Go 组件之和**，是 Stage 4 打包时评估替换（解耦表 R9）的硬数据 |
+| 2026-08-15 | **T12 扩到工具调用并通过**：经 `deepseek/` 前缀，LiteLLM 把 mock 的 chat `tool_calls` 翻译成 Responses 的 `function_call` 输出，流式/非流式皆可——R2 对"桥接语义缺口"的担心在 mock 路径上消掉；**真实供应商（DeepSeek/Qwen/GLM）的桥接尚未验**——本 spec 实施期没有供应商 key，§9 步骤 1 的"逐供应商探测"未执行，**移交 spec-1.8**（那里必须接真模型）。§8 Q3 的 ★A 维持，备选 B 保留 |
+| 2026-08-15 | **testkit 增 `StartLiteLLM`**（与 Helm 同 digest、同配置形态、`host.testcontainers.internal` 反向打测试进程里的 mock）与 **`testkit/mockllm`**（假供应商：chat 流式/非流式、工具回合、按名 fail、`/v1/responses` 刻意 404 供透传反例）；后者同时是 dev sidecar 镜像的源码——一份实现两处用 |
+| 2026-08-15 | **配额门放在 Meter 而非 svcapi 前**的一个附带决定：`NewMeter` 对 nil `QuotaGate`/`Recorder` panic 而非降级——没有这两样等于放弃防线，构造期就炸比运行期静默好 |
+| 2026-08-15 | `AIRUSH_CONSOLE_LLM_DEFAULT_TOKEN_BUDGET` 的消费者定为 console 启动钩子 `ensureDefaultLLMQuota`（默认租户无配额行时写入，已有不覆盖，失败拒绝启动）。0005 迁移的 seed 与它同值；两者并存是为了让"运维改过的值优先"与"从零起的环境也有护栏"同时成立 |

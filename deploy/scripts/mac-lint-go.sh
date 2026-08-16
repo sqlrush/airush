@@ -13,7 +13,7 @@ if [ -z "$GOLANGCI" ]; then
 fi
 GOLANGCI="$PWD/$GOLANGCI"
 
-mods=${@:-"console gateway connector libs/metrics libs/apierror"}
+mods=${@:-"console gateway connector libs/metrics libs/apierror libs/tenancy libs/llm testkit"}
 for m in ${=mods}; do
   echo "==> lint $m"
   (cd "$m" && GOFLAGS=-mod=readonly "$GOLANGCI" run ./...)
