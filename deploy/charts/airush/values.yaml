@@ -73,16 +73,23 @@ llm:
   # 的 "<provider>/<model>"。**供应商前缀规则（实测）**：chat-only 供应商必须用原生前缀
   # （deepseek/、hosted_vllm/…）而非 openai/ + apiBase——前者 LiteLLM 会把 Responses API
   # 桥接成 chat，后者把 /v1/responses 原样透传给不认识它的后端。
+  # 默认供应商 = Kimi K3（user 2026-08-15 定），Kimi Code 端点 api.kimi.com/coding/v1（OpenAI 兼容，
+  # 且原生支持 Responses API）。实测（probe-litellm/run-kimi.sh）：moonshot/ 与 openai/ 两种前缀
+  # 下 chat/流式 usage/Responses/工具调用全部可用；取 moonshot/ 与前缀规则一致。K3 是推理模型
+  # （返回 reasoning_content），调用方 max_tokens 要给足，几十个 token 会全被思考吃掉。
+  # 可选 real: true —— dev 的 mockProvider 形态下也保留该条为真实供应商（本地覆盖用）。
   models:
     - name: chat-default
-      litellm: deepseek/deepseek-chat
-      apiKeyEnv: DEEPSEEK_API_KEY
-    - name: chat-strong
-      litellm: anthropic/claude-sonnet-4-5
-      apiKeyEnv: ANTHROPIC_API_KEY
+      litellm: moonshot/k3
+      apiBase: https://api.kimi.com/coding/v1
+      apiKeyEnv: KIMI_API_KEY
+    - name: chat-long
+      litellm: moonshot/k3-256k
+      apiBase: https://api.kimi.com/coding/v1
+      apiKeyEnv: KIMI_API_KEY
   # 逻辑名 → 备选逻辑名列表；主模型上游失败时按序尝试
   fallbacks:
-    chat-default: [chat-strong]
+    chat-default: [chat-long]
   # 仅 dev（values-dev）：sidecar 假供应商，models 全部指向它；dev-verify 不必持有真实 key。
   mockProvider:
     enabled: false

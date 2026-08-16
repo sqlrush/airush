@@ -37,8 +37,8 @@ llm:
     - name: chat-default
       litellm: deepseek/mock-default
       apiKeyEnv: MOCK
-    - name: chat-strong
-      litellm: deepseek/mock-strong
+    - name: chat-long
+      litellm: deepseek/mock-long
       apiKeyEnv: MOCK
     - name: chat-fail      # 上游恒 500 的模型（mock 按名字判定），供 fallback 断言
       litellm: deepseek/mock-fail

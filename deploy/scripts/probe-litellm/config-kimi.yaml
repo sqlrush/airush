@@ -1,0 +1,19 @@
+# 真实供应商探测（spec-1.7 §9 步骤 1）：Kimi K3，Kimi Code 端点 api.kimi.com/coding/v1。
+# key 只经环境变量注入。两条路径对照：① 原生 moonshot/ 前缀 + api_base 覆盖；② openai/ 前缀 + api_base。
+model_list:
+  - model_name: kimi-native
+    litellm_params:
+      model: moonshot/k3
+      api_base: https://api.kimi.com/coding/v1
+      api_key: os.environ/MOONSHOT_API_KEY
+  - model_name: kimi-openai
+    litellm_params:
+      model: openai/k3
+      api_base: https://api.kimi.com/coding/v1
+      api_key: os.environ/MOONSHOT_API_KEY
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+litellm_settings:
+  telemetry: false
+  json_logs: true
+  drop_params: true
