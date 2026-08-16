@@ -12,4 +12,6 @@ use (
 	./libs/obs
 	./libs/accessor
 	./libs/metrics
+	./libs/tenancy
+	./libs/llm
 )

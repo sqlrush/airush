@@ -1,6 +1,6 @@
 # spec-1.7 LLM 网关
 
-> **frozen** — user approve 2026-08-15（§8 Q1-Q7 **全采 ★**；新增第三方镜像 `ghcr.io/berriai/litellm` 一并批准；`libs/tenancy` 提取一并批准；无新增 Go module）。
+> **shipped** — user approve 2026-08-15，实施完成 + review 收口 2026-08-15（PR #29）。（§8 Q1-Q7 **全采 ★**；新增第三方镜像 `ghcr.io/berriai/litellm` 一并批准；`libs/tenancy` 提取一并批准；无新增 Go module）。
 > 起草前已就 LiteLLM 形态做过实测（`deploy/scripts/probe-litellm/`），§2/§6 中标 **实测** 的
 > 断言来自那次探测，不是推演。
 
@@ -335,19 +335,19 @@ func (c *Client) ChatCompletion(ctx context.Context, req ChatRequest) (ChatRespo
 
 ## §7 DoD
 
-- [ ] D1-D6 全部交付；0005 `up→down→up` 幂等；
-- [ ] LiteLLM 镜像以 **digest 钉版**进 values，`main-stable` 标签不出现在 chart 里；
-- [ ] Helm 渲染物中无任何供应商 key / master key 明文（T20 断言 + `helm template | grep`）；
-- [ ] `libs/llm` 单元 T1-T10 全绿，覆盖率 ≥ 80%；集成 T11-T18 全绿；
-- [ ] 三个新错误码入 `proto/errors.json` 且各有触发用例；
-- [ ] `libs/tenancy` 提取完成，console 内既有调用零改动（编译期别名），gateway 不受影响；
-- [ ] 观测：`airush_llm_*` 三件套接入 spec-0.9；LiteLLM `/metrics` 可用性与鉴权在 T15 固化，抓取方式写进 §2.2 注释；
-- [ ] AD-3 证据：T16 canary 用例 + LiteLLM 无 DB/无缓存的配置在 Helm 模板注释里说明"为什么无状态"；
-- [ ] dev-verify ALL PASS 含 T19-T21；`make dev-up` 多出的 mock 镜像构建 ≤ 30s；
-- [ ] `docs/decoupling-architecture.md` 可替换点表加 LLM 网关一行；
-- [ ] OpenAPI 契约同步；`.env.example` 一致性门闩过；
-- [ ] 覆盖率合并口径：console ≥ 80%、libs-llm ≥ 80%；CI 全绿；
-- [ ] 文档同步：spec 状态、roadmap §8、CHANGELOG；1.8 依赖的接口（`Meter`、`AIRUSH_AGENT_LLM_*`）在本 spec §2.4/§2.6 定版，1.8 起草时不再改。
+- [x] D1-D6 全部交付；0005 `up→down→up` 幂等；
+- [x] LiteLLM 镜像以 **digest 钉版**进 values，`main-stable` 标签不出现在 chart 里；
+- [x] Helm 渲染物中无任何供应商 key / master key 明文（T20 断言 + `helm template | grep`）；
+- [x] `libs/llm` 单元 T1-T10 全绿，覆盖率 ≥ 80%；集成 T11-T18 全绿；
+- [x] 三个新错误码入 `proto/errors.json` 且各有触发用例；
+- [x] `libs/tenancy` 提取完成，console 内既有调用零改动（编译期别名），gateway 不受影响；
+- [x] 观测：`airush_llm_*` 三件套接入 spec-0.9；LiteLLM `/metrics` 可用性与鉴权在 T15 固化，抓取方式写进 §2.2 注释；
+- [x] AD-3 证据：T16 canary 用例 + LiteLLM 无 DB/无缓存的配置在 Helm 模板注释里说明"为什么无状态"；
+- [x] dev-verify ALL PASS 含 T19-T21；`make dev-up` 多出的 mock 镜像构建 ≤ 30s；
+- [x] `docs/decoupling-architecture.md` 可替换点表加 LLM 网关一行；
+- [x] OpenAPI 契约同步；`.env.example` 一致性门闩过；
+- [x] 覆盖率合并口径：console ≥ 80%、libs-llm ≥ 80%；CI 全绿；
+- [x] 文档同步：spec 状态、roadmap §8、CHANGELOG；1.8 依赖的接口（`Meter`、`AIRUSH_AGENT_LLM_*`）在本 spec §2.4/§2.6 定版，1.8 起草时不再改。
 
 ---
 
@@ -436,3 +436,18 @@ func (c *Client) ChatCompletion(ctx context.Context, req ChatRequest) (ChatRespo
 - **spec-2.8**（速率限制与租户配额）：并发/RPS 限流 + 本地令牌桶兜底 + 按 agent 预算；
 - **spec-4.5**（私有化打包）：本地模型经 `hosted_vllm/`、`ollama/` 前缀接入；若替换 LiteLLM，
   按解耦表路径换组件。
+
+---
+
+## §11 实施 Changelog（frozen 后追加，不重写正文）
+
+| 日期 | 变更 |
+|---|---|
+| 2026-08-15 | **错误码：3 个计划新码 → 1 个新码 + 2 个复用**。spec-0.8 已预留 `AR_UPSTREAM_LLM_FAILED`（502）、`AR_UPSTREAM_LLM_TIMEOUT`（504）、`AR_QUOTA_EXCEEDED`（429），语义与本 spec 的 `AR_LLM_UPSTREAM_FAILED` / `AR_LLM_QUOTA_EXCEEDED` 完全重合，重复造码会让同一故障有两个码。只新增 `AR_UPSTREAM_LLM_MODEL_UNKNOWN`（E1/400：调用方配置错误，不是上游故障）。§2.4/§3.4/§4 里的旧名按此对照 |
+| 2026-08-15 | **R4 内存基线实测修正**：LiteLLM 1.96.2 无 DB 形态空载 **稳态 ~1.05 GiB、启动峰值 ~1.14 GiB**（`probe-litellm/mem.sh`），是 R4 估的 300-400 MB 的 3 倍。limit < 1.2 GiB 在 kind 上被 OOM 杀——表现为 exit 137、日志为空、`reason=Error` 而非 `OOMKilled`（被杀的是 entrypoint `prod_entrypoint.sh` 的子进程，PID 1 以 137 退出）。生产 requests 1280Mi / limit 2Gi，dev limit 1.5Gi；同时加 startupProbe（Python 冷启动慢，liveness 不能在 import 完成前接管）。这条把"Python 进程重"从定性变成了定量：**LiteLLM 单副本 ≈ 三个 Go 组件之和**，是 Stage 4 打包时评估替换（解耦表 R9）的硬数据 |
+| 2026-08-15 | **T12 扩到工具调用并通过**：经 `deepseek/` 前缀，LiteLLM 把 mock 的 chat `tool_calls` 翻译成 Responses 的 `function_call` 输出，流式/非流式皆可——R2 对"桥接语义缺口"的担心在 mock 路径上消掉；**真实供应商（DeepSeek/Qwen/GLM）的桥接尚未验**——本 spec 实施期没有供应商 key，§9 步骤 1 的"逐供应商探测"未执行，**移交 spec-1.8**（那里必须接真模型）。§8 Q3 的 ★A 维持，备选 B 保留 |
+| 2026-08-15 | **testkit 增 `StartLiteLLM`**（与 Helm 同 digest、同配置形态、`host.testcontainers.internal` 反向打测试进程里的 mock）与 **`testkit/mockllm`**（假供应商：chat 流式/非流式、工具回合、按名 fail、`/v1/responses` 刻意 404 供透传反例）；后者同时是 dev sidecar 镜像的源码——一份实现两处用 |
+| 2026-08-15 | **配额门放在 Meter 而非 svcapi 前**的一个附带决定：`NewMeter` 对 nil `QuotaGate`/`Recorder` panic 而非降级——没有这两样等于放弃防线，构造期就炸比运行期静默好 |
+| 2026-08-15 | `AIRUSH_CONSOLE_LLM_DEFAULT_TOKEN_BUDGET` 的消费者定为 console 启动钩子 `ensureDefaultLLMQuota`（默认租户无配额行时写入，已有不覆盖，失败拒绝启动）。0005 迁移的 seed 与它同值；两者并存是为了让"运维改过的值优先"与"从零起的环境也有护栏"同时成立 |
+| 2026-08-15 | **真实供应商探测完成（原移交 1.8 的项，user 当日提供 Kimi key 后即在本 spec 内做掉）**：平台默认模型定为 **Kimi K3**（user 定），端点 `https://api.kimi.com/coding/v1`（Kimi Code 端点；`sk-kimi-` 前缀的 key 不属于 Moonshot 开放平台 `api.moonshot.cn/.ai`，两处 401——先直连判定端点再上 LiteLLM，少绕一圈）。可用模型 `k3` / `k3-256k` / `kimi-for-coding` / `kimi-for-coding-highspeed`。经 LiteLLM 实测（`probe-litellm/run-kimi.sh`）：`moonshot/k3`+api_base 与 `openai/k3`+api_base **两种前缀下 chat 非流式 / 流式 usage / Responses API / Responses+工具调用（function_call）全部可用**；Kimi 端点**原生支持 Responses**，故 `openai/` 前缀是透传而非桥接——不与"openai/ 不桥接"的实测结论矛盾，是供应商自己会说 Responses。默认取 `moonshot/` 前缀（前缀规则一致，不依赖供应商是否支持 Responses）。**R2 在真实供应商上消掉。** K3 是推理模型（`reasoning_content`，usage 含 `reasoning_tokens`）：调用方 `max_tokens` 须给足，20 会被思考全吃掉（1.8 的 agent 配置注意）。生产 values 默认 `chat-default → moonshot/k3`、`chat-long → k3-256k`；模板增 per-model `real: true`（dev mock 形态下保留真实条目），配合仓库外 `~/.airush/values-kimi.yaml` + Secret `airush-llm-provider-keys` 在 kind 上验通 `providerKeysSecret` envFrom 路径：真 K3 经网关回答、function_call 正确、LiteLLM 日志 0 次出现 key 片段。key 全程只在 Mac `~/.airush/kimi.key`（0600），仓库/脚本/commit 零出现 |
+| 2026-08-15 | **Code review（inline）收口，两处修、一处登记**：① `Meter.prepare` 曾把改写后的 body 回写到**调用方的** `*http.Request`——RoundTripper 契约禁止修改调用方请求，且该行是死代码（`modelOf` 用的是克隆）；删除，逻辑模型名改为在配额门前 peek 一次。② 幂等键 `trace-seq` 只靠进程内序号：同一 trace 若跨两个 runtime 副本重放会撞键，第二笔被当"重复"静默丢掉——加每 Meter 实例的随机 nonce（`trace-nonce-seq`）。③ **登记，未改**：Meter 把网关 4xx/5xx 转成 Go error（按 §3.4 映射错误码、不透传上游正文）而不是把 HTTP 响应原样返回——这改变了 `http.Client` 的常规契约（4xx 本应是响应而非错误）。codexgo 客户端对"传输错误"与"HTTP 状态"的重试/展示逻辑可能不同，**在 spec-1.8 接入真客户端时验证**；若不合适，改为透传响应 + 清洗错误正文，Meter 其余不动 |

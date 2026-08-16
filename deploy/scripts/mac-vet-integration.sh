@@ -6,7 +6,7 @@ set -eu
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 export GOFLAGS=-mod=readonly
 ROOT=/Users/sqlrush/airush
-for m in console gateway connector libs/metrics; do
+for m in console gateway connector libs/metrics libs/tenancy libs/llm testkit; do
   echo "=== $m ==="
   (cd "$ROOT/$m" && gofmt -w . && go vet -tags=integration ./...) || exit 1
 done

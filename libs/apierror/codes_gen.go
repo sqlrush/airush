@@ -17,6 +17,7 @@ const (
 	CodeInternalError Code = "AR_INTERNAL_ERROR"
 	CodeUpstreamLlmTimeout Code = "AR_UPSTREAM_LLM_TIMEOUT"
 	CodeUpstreamLlmFailed Code = "AR_UPSTREAM_LLM_FAILED"
+	CodeUpstreamLlmModelUnknown Code = "AR_UPSTREAM_LLM_MODEL_UNKNOWN"
 	CodeUpstreamConnectorOffline Code = "AR_UPSTREAM_CONNECTOR_OFFLINE"
 	CodeQuotaExceeded Code = "AR_QUOTA_EXCEEDED"
 	CodeDatasourceNotFound Code = "AR_DATASOURCE_NOT_FOUND"
@@ -56,6 +57,7 @@ var codeMeta = map[Code]Meta{
 	CodeInternalError: {Level: "E4", HTTP: 500, Message: "服务内部错误", Deprecated: false},
 	CodeUpstreamLlmTimeout: {Level: "E5", HTTP: 504, Message: "模型服务响应超时，请稍后重试", Deprecated: false},
 	CodeUpstreamLlmFailed: {Level: "E5", HTTP: 502, Message: "模型服务暂不可用，请稍后重试", Deprecated: false},
+	CodeUpstreamLlmModelUnknown: {Level: "E1", HTTP: 400, Message: "请求的模型不存在", Deprecated: false},
 	CodeUpstreamConnectorOffline: {Level: "E5", HTTP: 503, Message: "数据源接入器离线，请检查 Connector 状态", Deprecated: false},
 	CodeQuotaExceeded: {Level: "E6", HTTP: 429, Message: "请求超出配额限制，请稍后重试", Deprecated: false},
 	CodeDatasourceNotFound: {Level: "E3", HTTP: 404, Message: "数据源不存在", Deprecated: false},

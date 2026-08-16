@@ -7,6 +7,7 @@ require (
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/sqlrush/airush/libs/apierror v0.0.0-00010101000000-000000000000
 	github.com/sqlrush/airush/libs/obs v0.0.0-00010101000000-000000000000
+	github.com/sqlrush/airush/libs/tenancy v0.0.0-00010101000000-000000000000
 	github.com/sqlrush/airush/testkit v0.0.0-00010101000000-000000000000
 )
 
@@ -102,6 +103,8 @@ replace github.com/sqlrush/airush/libs/config => ../libs/config
 replace github.com/sqlrush/airush/libs/apierror => ../libs/apierror
 
 replace github.com/sqlrush/airush/libs/obs => ../libs/obs
+
+replace github.com/sqlrush/airush/libs/tenancy => ../libs/tenancy
 
 require github.com/sqlrush/airush/libs/accessor v0.0.0-00010101000000-000000000000
 

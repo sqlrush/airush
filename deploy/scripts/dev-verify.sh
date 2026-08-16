@@ -264,6 +264,57 @@ kill $PF 2>/dev/null
 [ -n "$ok" ] || fail "Connector 通道采集未落库——gateway → console 上报这一跳断了（spec-1.5 T22）"
 echo "  Connector 通道落库 OK（连接器直采客户库 → gateway → console → TimescaleDB）"
 
+echo "== LLM 网关（spec-1.7 T19/T20：LiteLLM 无状态形态就绪 + 经 master key 路由到 mock + 无明文 key） =="
+"${KCTL[@]}" rollout status deploy/airush-llm --timeout=180s >/dev/null || fail "airush-llm 未就绪"
+# T19：readiness 必须报 db 未连接——确认没人"顺手"给它配了 DATABASE_URL（那会让 prompt 进它的库，AD-3）
+"${KCTL[@]}" port-forward svc/airush-llm 14000:4000 >/dev/null 2>&1 &
+PF=$!
+sleep 2
+ready=$(curl -s http://localhost:14000/health/readiness)
+echo "$ready" | grep -q '"db":"Not connected"' || { kill $PF 2>/dev/null; fail "LiteLLM readiness 未报 db 未连接: ${ready}（无状态形态被破坏？）"; }
+echo "  LiteLLM 就绪且无 DB（${ready}）"
+# T20：master key 来自 Secret（脚本里绝不出现字面量）；经逻辑模型名打到 mock sidecar
+mk=$("${KCTL[@]}" get secret airush-llm-master-key -o jsonpath='{.data.master-key}' | base64 -d)
+[ -n "$mk" ] || { kill $PF 2>/dev/null; fail "master key Secret 为空"; }
+nokey=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:14000/v1/models)
+[ "$nokey" = "401" ] || { kill $PF 2>/dev/null; fail "无 key 访问未被拒（http=${nokey}）"; }
+resp=$(curl -s http://localhost:14000/v1/chat/completions -H "Authorization: Bearer $mk" \
+  -H 'Content-Type: application/json' -d '{"model":"chat-default","messages":[{"role":"user","content":"ping"}]}')
+echo "$resp" | grep -q '"content":"mock reply"' || { kill $PF 2>/dev/null; fail "chat-default 未路由到 mock: $(echo "$resp" | head -c 300)"; }
+echo "$resp" | grep -q '"total_tokens":14' || { kill $PF 2>/dev/null; fail "usage 未透传: $(echo "$resp" | head -c 300)"; }
+# fallback：chat-fail 上游恒 500 → 备选 chat-default 接住
+resp=$(curl -s http://localhost:14000/v1/chat/completions -H "Authorization: Bearer $mk" \
+  -H 'Content-Type: application/json' -d '{"model":"chat-fail","messages":[{"role":"user","content":"ping"}]}')
+echo "$resp" | grep -q '"content":"mock reply"' || { kill $PF 2>/dev/null; fail "fallback 未生效: $(echo "$resp" | head -c 300)"; }
+# Responses API 经供应商原生前缀桥接（实测结论进 e2e）
+code=$(curl -s -o /tmp/airush-llm-resp.json -w '%{http_code}' http://localhost:14000/v1/responses -H "Authorization: Bearer $mk" \
+  -H 'Content-Type: application/json' -d '{"model":"chat-default","input":"ping"}')
+kill $PF 2>/dev/null
+[ "$code" = "200" ] || fail "Responses API 桥接失败 http=${code} $(head -c 300 /tmp/airush-llm-resp.json)"
+# 渲染物无明文 key：ConfigMap 里只允许 os.environ 引用与 dev 的 "mock" 占位
+cm=$("${KCTL[@]}" get configmap airush-llm-config -o jsonpath='{.data.config\.yaml}')
+echo "$cm" | grep -E 'api_key|master_key' | grep -vE 'os\.environ/|api_key: mock$' && fail "LLM ConfigMap 出现明文 key"
+echo "  LLM 路由 OK（无 key 401 / chat-default→mock 含 usage / chat-fail→fallback / Responses 桥接 200 / ConfigMap 无明文 key）"
+
+# T21：控制面配额面——默认租户 seed 行在；PUT 改预算 → GET 回读；用量聚合端点可达
+"${KCTL[@]}" port-forward svc/airush-console 18080:8080 >/dev/null 2>&1 &
+PF=$!
+sleep 2
+q=$(curl -sf http://localhost:18080/api/v1/llm/quota) || { kill $PF; fail "GET /api/v1/llm/quota 不可达"; }
+echo "$q" | grep -q '"set":true' || { kill $PF; fail "默认租户无配额 seed 行: ${q}"; }
+code=$(curl -s -o /tmp/airush-llm-quota.json -w '%{http_code}' -X PUT http://localhost:18080/api/v1/llm/quota \
+  -H 'Content-Type: application/json' -d '{"token_budget":123456,"hard_stop":true}')
+[ "$code" = "200" ] || { kill $PF; fail "PUT quota http=${code} $(cat /tmp/airush-llm-quota.json)"; }
+q=$(curl -sf http://localhost:18080/api/v1/llm/quota)
+echo "$q" | grep -q '"token_budget":123456' || { kill $PF; fail "PUT 后回读不一致: ${q}"; }
+# 复原为默认，别把 dev 环境留在小预算上
+curl -s -o /dev/null -X PUT http://localhost:18080/api/v1/llm/quota -H 'Content-Type: application/json' \
+  -d '{"token_budget":50000000,"hard_stop":true}'
+u=$(curl -sf "http://localhost:18080/api/v1/llm/usage?group_by=model") || { kill $PF; fail "GET /api/v1/llm/usage 不可达"; }
+kill $PF 2>/dev/null
+echo "$u" | grep -q '"items"' || fail "usage 响应形态异常: ${u}"
+echo "  LLM 配额面 OK（seed 行在 / PUT→GET 回读 / usage 聚合可达）"
+
 echo "== helm 幂等（再次 upgrade 应零变更零重启） =="
 before=$("${KCTL[@]}" get pods -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | sort)
 helm upgrade --install airush deploy/charts/airush --kube-context kind-airush-dev \

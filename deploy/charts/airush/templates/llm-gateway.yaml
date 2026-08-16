@@ -1,0 +1,182 @@
+{{- if .Values.llm.enabled }}
+{{- /*
+spec-1.7 D1：LLM 网关（LiteLLM，AD-8）。
+
+无状态纯路由（spec-1.7 §8 Q1）：无 DATABASE_URL、无 Redis、无虚拟 key。理由见 values.yaml llm 段。
+三条硬规则：
+  1. ConfigMap 里不出现任何 key 明文——master key 与供应商 key 全部走 os.environ/<NAME> 引用，
+     由 Secret 以 env / envFrom 注入（dev-verify T20 会 grep 渲染物断言）；
+  2. 管理 UI 关闭（DISABLE_ADMIN_UI）、遥测关闭、json 日志（成功路径不打 prompt，实测）；
+  3. 只有 ClusterIP，无 Ingress。
+*/}}
+{{- $ns := .Release.Namespace }}
+{{- $mkSecret := .Values.llm.masterKeySecret | default (printf "%s-llm-master-key" .Release.Name) }}
+{{- if not .Values.llm.masterKeySecret }}
+{{- $existing := lookup "v1" "Secret" $ns $mkSecret }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $mkSecret }}
+  labels:
+    {{- include "airush.labels" . | nindent 4 }}
+type: Opaque
+data:
+  {{- if $existing }}
+  # 复用既有 master key（内容不变，避免 upgrade 触发 pod 重启与调用方 key 失效）
+  master-key: {{ index $existing.data "master-key" }}
+  {{- else }}
+  master-key: {{ randAlphaNum 48 | b64enc }}
+  {{- end }}
+---
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-llm-config
+  labels:
+    {{- include "airush.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    # 由 Helm 渲染；手改无效。逻辑名 → 供应商映射见 values.yaml llm.models。
+    model_list:
+    {{- if .Values.llm.mockProvider.enabled }}
+    # dev（mockProvider）：全部指向 sidecar 假供应商，且用 deepseek/ 前缀而非 openai/——
+    # 前者让 LiteLLM 把 Responses API 桥接成 chat（实测），与生产供应商行为一致。
+    {{- end }}
+    {{- range .Values.llm.models }}
+      - model_name: {{ .name | quote }}
+        litellm_params:
+          {{- if and $.Values.llm.mockProvider.enabled (not .real) }}
+          model: {{ printf "deepseek/mock-%s" .name | quote }}
+          api_base: http://127.0.0.1:18099/v1
+          api_key: mock
+          {{- else }}
+          model: {{ .litellm | quote }}
+          {{- if .apiBase }}
+          api_base: {{ .apiBase | quote }}
+          {{- end }}
+          api_key: {{ printf "os.environ/%s" .apiKeyEnv | quote }}
+          {{- end }}
+    {{- end }}
+    general_settings:
+      master_key: os.environ/LITELLM_MASTER_KEY
+    litellm_settings:
+      telemetry: false
+      json_logs: true
+      drop_params: true
+      callbacks: ["prometheus"]
+      {{- if .Values.llm.fallbacks }}
+      fallbacks:
+      {{- range $primary, $alts := .Values.llm.fallbacks }}
+        - {{ $primary }}: {{ toJson $alts }}
+      {{- end }}
+      {{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-llm
+  labels:
+    {{- include "airush.labels" . | nindent 4 }}
+    {{- include "airush.selector" "llm" | nindent 4 }}
+spec:
+  replicas: {{ .Values.llm.replicas }}
+  selector:
+    matchLabels:
+      {{- include "airush.selector" "llm" | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "airush.labels" . | nindent 8 }}
+        {{- include "airush.selector" "llm" | nindent 8 }}
+      annotations:
+        # 配置变更即滚动（ConfigMap 内容 hash）
+        checksum/llm-config: {{ toJson .Values.llm.models | sha256sum }}
+    spec:
+      containers:
+        - name: litellm
+          image: {{ .Values.llm.image | quote }}
+          args: ["--config", "/app/config/config.yaml", "--port", "4000"]
+          ports:
+            - containerPort: 4000
+          env:
+            - name: LITELLM_MASTER_KEY
+              valueFrom:
+                secretKeyRef: { name: {{ $mkSecret }}, key: master-key }
+            - name: DISABLE_ADMIN_UI
+              value: "True"
+            - name: LITELLM_LOG
+              value: "INFO"
+          {{- if .Values.llm.providerKeysSecret }}
+          envFrom:
+            - secretRef: { name: {{ .Values.llm.providerKeysSecret }} }
+          {{- end }}
+          volumeMounts:
+            - name: config
+              mountPath: /app/config
+              readOnly: true
+          # Python 进程冷启动慢（导入 LiteLLM 依赖树），CPU 受限时可达 1-2 分钟；用 startupProbe
+          # 给足启动窗口，liveness 只在启动完成后接管——否则 liveness 会在它 import 完之前就
+          # 把它杀掉（kind 上实测：exit 137、日志为空、无 OOMKilled）。
+          startupProbe:
+            httpGet: { path: /health/liveliness, port: 4000 }
+            periodSeconds: 5
+            failureThreshold: 36        # 最多 3 分钟
+          livenessProbe:
+            httpGet: { path: /health/liveliness, port: 4000 }
+            periodSeconds: 15
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /health/readiness, port: 4000 }
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.llm.resources | nindent 12 }}
+          # LiteLLM 镜像自带 uid；不套 airush.securityContext 的 readOnlyRootFilesystem
+          # （它启动期要写 /tmp 与 prisma 缓存），但仍降权、禁提权。
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+        {{- if .Values.llm.mockProvider.enabled }}
+        - name: mockllm
+          image: "{{ .Values.image.registry }}/mockllm:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: 18099
+          resources:
+            requests: { cpu: 20m, memory: 32Mi }
+            limits: { cpu: 200m, memory: 64Mi }
+          securityContext:
+            {{- include "airush.securityContext" . | nindent 12 }}
+        {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ .Release.Name }}-llm-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-llm
+  labels:
+    {{- include "airush.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "airush.selector" "llm" | nindent 4 }}
+  ports:
+    - port: 4000
+      targetPort: 4000
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ .Release.Name }}-llm
+  labels:
+    {{- include "airush.labels" . | nindent 4 }}
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      {{- include "airush.selector" "llm" | nindent 6 }}
+{{- end }}

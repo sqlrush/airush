@@ -8,6 +8,24 @@
 
 ### Added
 
+- LLM 网关（spec-1.7，AD-8）：智能体框架组第一件——
+  - **LiteLLM 无状态纯路由**（digest 钉版 1.96.2；无 DB、无缓存、无虚拟 key）：Helm 组件
+    `llm`（ConfigMap 只放 `os.environ/` 引用，master key 与供应商 key 全部 Secret 注入；管理 UI
+    关闭、遥测关闭、json 日志、prometheus 回调；startupProbe + 实测内存基线 ~1.05 GiB）；
+    dev 形态带 mockllm sidecar 假供应商，dev-verify 不持有真实 key；
+  - **配额与用量在平台侧**：`libs/llm.Meter`（`http.RoundTripper`，对 codexgo 客户端零侵入）
+    注入租户/agent/会话/trace 头、流式自动补 `include_usage`、chat/responses × 流式/非流式
+    四种 usage 提取、调用前配额门（超额拒 / 控制面不可达 fail-open 计数）、调用后记账
+    （断流 aborted 记 0 token）、错误映射（上游正文只进日志不透传）；
+  - 迁移 0005：`llm_quotas`（租户月度 token 预算 + hard_stop）、`llm_usage`（一次调用一行，
+    幂等键，应用角色只增不改）；console 内部 API quota-check/usage + 公开 API
+    `/api/v1/llm/{quota,usage}`；`airush_llm_*` 观测三件套；
+  - **实测结论进用例**：Responses API → chat-only 供应商仅在用**原生前缀**（`deepseek/`）时
+    被桥接（含工具调用），`openai/` 前缀原样透传 404；LiteLLM `/metrics` 须带 master key；
+    成功路径 json 日志不含 prompt（AD-3）；
+  - `libs/tenancy` 自 console 提取（libs 不得依赖 console），console 保留别名转发；
+  - 新错误码 AR_UPSTREAM_LLM_MODEL_UNKNOWN（AR_UPSTREAM_LLM_FAILED/TIMEOUT、AR_QUOTA_EXCEEDED
+    复用 spec-0.8 既有）。
 - 时序存储（spec-1.5，AD-7/AD-10）：采集数据从内存 buffer 落到 TimescaleDB，**表数固定为 3 张**——
   - `tsdb.series` 通用读数流水（超表，`(租户, 数据源, series, 实体, 值, 时刻)`）：指标、慢查询
     及后续任何"实体 + 数字随时间变化"的产物共用一张表；列存压缩 7 天、保留 14 天；

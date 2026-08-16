@@ -47,6 +47,53 @@ gateway:
     # 空 = Helm 生成（dev/builtin 形态，见 connector-pki.yaml）
     externalCASecret: ""
 
+# spec-1.7 LLM 网关（AD-8）：LiteLLM **无状态纯路由**——无 DB、无缓存、无虚拟 key，只做
+# 协议翻译 + 路由 + fallback；配额与用量在平台侧（console，控制面 PG）。为什么无状态：
+# ① AD-3——它不持久化任何东西，prompt 不落它的库；② 配额一份事实源；③ 可随意扩缩、
+# 可替换（换 Bifrost/自研只动本段 + AIRUSH_AGENT_LLM_URL，上层零改动）。
+llm:
+  enabled: false
+  replicas: 1
+  # digest 钉版（spec-1.7 R1：LiteLLM 迭代极快、偶有破坏性变更）。对应 1.96.2，
+  # 2026-08-11 构建。升级走 PR + libs/llm 集成回归，禁止改回浮动 tag。
+  image: ghcr.io/berriai/litellm@sha256:154e23bb5f31b1f10e16392a8ef299bd2cde08de3a64a6849002cfcc25ce3c63
+  # 内存基线**实测**（1.96.2，无 DB 形态，空载）：启动峰值 ~1.14 GiB、稳态 ~1.05 GiB——
+  # 比 spec 起草时估的 300-400 MB 大 3 倍。limit 低于 1.2 GiB 会在 kind 上被 OOM 杀（表现为
+  # exit 137、日志为空、reason=Error 而非 OOMKilled，因为被杀的是 entrypoint 的子进程）。
+  resources:
+    requests: { cpu: 250m, memory: 1280Mi }
+    limits: { cpu: "1", memory: 2Gi }
+  # 生产：引用既有 Secret（键 master-key）；空 = chart 生成并 lookup 复用（见 llm-gateway.yaml）
+  masterKeySecret: ""
+  # 生产：引用既有 Secret，键名 = 供应商环境变量名（DEEPSEEK_API_KEY / ANTHROPIC_API_KEY …），
+  # 整个 Secret 以 envFrom 注入；ConfigMap 里只出现 os.environ/<NAME> 引用，绝无 key 明文。
+  # 空 = 不注入（仅 mockProvider 形态可用）。
+  providerKeysSecret: ""
+  # 模型路由。name 是平台侧**逻辑名**（agent 配置引用它，跨供应商稳定）；litellm 是 LiteLLM
+  # 的 "<provider>/<model>"。**供应商前缀规则（实测）**：chat-only 供应商必须用原生前缀
+  # （deepseek/、hosted_vllm/…）而非 openai/ + apiBase——前者 LiteLLM 会把 Responses API
+  # 桥接成 chat，后者把 /v1/responses 原样透传给不认识它的后端。
+  # 默认供应商 = Kimi K3（user 2026-08-15 定），Kimi Code 端点 api.kimi.com/coding/v1（OpenAI 兼容，
+  # 且原生支持 Responses API）。实测（probe-litellm/run-kimi.sh）：moonshot/ 与 openai/ 两种前缀
+  # 下 chat/流式 usage/Responses/工具调用全部可用；取 moonshot/ 与前缀规则一致。K3 是推理模型
+  # （返回 reasoning_content），调用方 max_tokens 要给足，几十个 token 会全被思考吃掉。
+  # 可选 real: true —— dev 的 mockProvider 形态下也保留该条为真实供应商（本地覆盖用）。
+  models:
+    - name: chat-default
+      litellm: moonshot/k3
+      apiBase: https://api.kimi.com/coding/v1
+      apiKeyEnv: KIMI_API_KEY
+    - name: chat-long
+      litellm: moonshot/k3-256k
+      apiBase: https://api.kimi.com/coding/v1
+      apiKeyEnv: KIMI_API_KEY
+  # 逻辑名 → 备选逻辑名列表；主模型上游失败时按序尝试
+  fallbacks:
+    chat-default: [chat-long]
+  # 仅 dev（values-dev）：sidecar 假供应商，models 全部指向它；dev-verify 不必持有真实 key。
+  mockProvider:
+    enabled: false
+
 # 其余组件槽位（模板随对应 spec 添加，见 spec-0.10 实施修订）：
 # agent-runtime → spec-1.8；skills → spec-1.9；frontend → spec-1.13；
 # connector 为客户侧组件，不入平台 chart。

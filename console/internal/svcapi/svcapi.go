@@ -68,6 +68,9 @@ func (s *Server) Handler() http.Handler {
 	// 采集数据上报（spec-1.5 D5）：gateway 收到 Connector 的 DataUpload 后转发至此。
 	handle("POST /internal/v1/collected/metrics", s.ingestMetrics)
 	handle("POST /internal/v1/collected/snapshots", s.ingestSnapshot)
+	// LLM 配额门与记账（spec-1.7 D4）：agent-runtime 进程里的 libs/llm.ConsoleClient 调用。
+	handle("POST /internal/v1/llm/quota-check", s.llmQuotaCheck)
+	handle("POST /internal/v1/llm/usage", s.llmUsage)
 	return s.authMiddleware(mux)
 }
 
