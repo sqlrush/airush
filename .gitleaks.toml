@@ -10,6 +10,9 @@ regexes = [
   '''MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=''',
   # enrolltoken 解析器的畸形输入测试固定值（spec-1.2；全部是故意非法的假 token，用于断言拒绝）
   '''bm90LWNvbG9u\.s''',
+  # spec-1.7 LiteLLM 探测脚本历史 commit 里的假 master key（sk-probe-master，仅指向本机 mock 供应商；
+  # 当前版本已改为环境变量注入，此条只为让含该字面量的历史 commit 通过 PR 级扫描）
+  '''sk-probe-master''',
 ]
 paths = [
   # enrolltoken 解析器单测：整文件是对畸形/伪造 token 的拒绝断言，无真实凭据
