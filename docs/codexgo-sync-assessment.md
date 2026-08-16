@@ -99,3 +99,5 @@ codexgo 的核心理由之一。若时间压力极大，可 B/C 混合：簇 A/C
 | 日期 | 变更 |
 |---|---|
 | 2026-08-08 | 初版：0.137-0.147 release notes 全量盘点与分级 |
+| 2026-08-16 | **进度与源码校正**：簇 A 已按 codexgo spec 49 前向同步到 0.147（需求 1-5，v0.5.0）；簇 B/C/D 按源码逐簇盘点见 `docs/codexgo-diff-inventory-bcd.md`——三处校正：① 线程/turn id 的 UUID v7 在 **0.136 已有**（`protocol/thread_id.rs`），codexgo 的 v4/stub 是移植偏差而非版本差异；② 簇 C 的"模型自有预算默认值（0.147）"实为上下文窗口预算 + 自动压缩回退，语义偏簇 E；③ 簇 D 上游 thread-store 增量的一半以上是本地 JSONL 文件工程（写锁/迁移/压缩/反向扫描），PG 后端不需要抽，故"D 2-3 周"可下修为"接口与语义对齐 ~1 周"。§4 路线建议：只补 D 的接口 + B 的失败上抛 + id v7（codexgo 侧 ~1 周），C 走 airush 侧 |
+| 2026-08-16 | **core/protocol/client 盘点**见 `docs/codexgo-diff-inventory-core.md`：core +1.4 万行里"带走"范围内值得吸收约 4 千行——① 输入队列/steer 准入 ② 上下文窗口预算与压缩（簇 E 核心，含 `compacted_item`）③ 集中审批阶段 + guardian 自动审阅（AD-9 agent 侧）④ 客户端去重/重试 ⑤ 协议新增 `SubAgentActivity`/`RawResponseCompleted`/`AgentMessage`；上游已删 goals/agent_jobs，codexgo 应同步删。合并 bcd 结论：codexgo 侧抽核前小 spec 约 2-2.5 周 |
