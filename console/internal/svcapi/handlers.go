@@ -182,3 +182,6 @@ func writeJSON(w http.ResponseWriter, status int, v any) error {
 	}
 	return nil
 }
+
+// isUUID 复用本包既有的 uuidRe（与 httpapi 同一正则，两包互不引用各自一份）。
+func isUUID(s string) bool { return uuidRe.MatchString(s) }

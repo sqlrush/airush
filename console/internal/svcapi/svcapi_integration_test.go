@@ -354,3 +354,92 @@ func TestIngestOwnershipEnforcedByDB(t *testing.T) {
 		t.Fatalf("落点收到 %d 批，want 1——被拒的上报不该落库", sink.Total())
 	}
 }
+
+// TestLLMQuotaCheckAndUsage spec-1.7 T18（内部面）：quota-check 三态（有余额 / 超额 429 /
+// 无配额行 = 不限）；usage 记账幂等（同 idem_key 重复上报不双记）；PUT 下调预算后立即拒。
+func TestLLMQuotaCheckAndUsage(t *testing.T) {
+	e := newEnv(t)
+	post := func(path string, body any) (int, map[string]any) { return e.post(t, path, svcToken, body) }
+	usage := func(idem string, tokens int, status string) map[string]any {
+		return map[string]any{
+			"tenant_id": devTenantID, "idem_key": idem, "status": status,
+			"usage": map[string]any{
+				"model": "chat-default", "upstream_model": "deepseek-chat",
+				"prompt_tokens": tokens, "completion_tokens": 0, "total_tokens": tokens, "stream": false,
+			},
+		}
+	}
+
+	// ① dev 租户 seed 预算 5 千万，未用 → 200 有余额
+	st, m := post("/internal/v1/llm/quota-check", map[string]any{"tenant_id": devTenantID})
+	if st != 200 || m["budget"] != float64(50_000_000) || m["used"] != float64(0) {
+		t.Fatalf("quota-check initial: %d %v", st, m)
+	}
+
+	// ② 记账 + 幂等：同 idem_key 三次只算一次
+	for i := 0; i < 3; i++ {
+		if st, m := post("/internal/v1/llm/usage", usage("idem-1", 1000, "ok")); st != 202 {
+			t.Fatalf("usage #%d: %d %v", i, st, m)
+		}
+	}
+	st, m = post("/internal/v1/llm/quota-check", map[string]any{"tenant_id": devTenantID})
+	if st != 200 || m["used"] != float64(1000) {
+		t.Fatalf("used after idempotent records = %v（want 1000，重复上报双记了）", m["used"])
+	}
+	// upstream_error / quota_rejected 不计入已用
+	if st, _ := post("/internal/v1/llm/usage", usage("idem-2", 5000, "upstream_error")); st != 202 {
+		t.Fatalf("usage upstream_error: %d", st)
+	}
+	st, m = post("/internal/v1/llm/quota-check", map[string]any{"tenant_id": devTenantID})
+	if m["used"] != float64(1000) {
+		t.Fatalf("upstream_error 被计入已用: %v", m)
+	}
+
+	// ③ 预算下调到 500（< 已用 1000）→ 立即 429
+	ctx := tenancy.WithTenant(context.Background(), devTenantID)
+	if err := e.store.InTenantTx(ctx, func(ctx context.Context, tx repo.Tx) error {
+		_, err := repo.UpsertLLMQuota(ctx, tx, 500, true)
+		return err
+	}); err != nil {
+		t.Fatalf("lower quota: %v", err)
+	}
+	st, m = post("/internal/v1/llm/quota-check", map[string]any{"tenant_id": devTenantID})
+	if st != 429 || m["code"] != "AR_QUOTA_EXCEEDED" {
+		t.Fatalf("超额应 429 AR_QUOTA_EXCEEDED，实际 %d %v", st, m)
+	}
+	// hard_stop=false → 超额也放行
+	if err := e.store.InTenantTx(ctx, func(ctx context.Context, tx repo.Tx) error {
+		_, err := repo.UpsertLLMQuota(ctx, tx, 500, false)
+		return err
+	}); err != nil {
+		t.Fatalf("soft quota: %v", err)
+	}
+	if st, _ = post("/internal/v1/llm/quota-check", map[string]any{"tenant_id": devTenantID}); st != 200 {
+		t.Fatalf("hard_stop=false 超额应放行，实际 %d", st)
+	}
+
+	// ④ 无配额行的租户 → 不限（budget=-1）
+	if _, err := e.admin.Exec(`INSERT INTO tenants (id, name, slug) VALUES ($1, '租户B', 'tenant-b') ON CONFLICT DO NOTHING`,
+		"22222222-2222-2222-2222-222222222222"); err != nil {
+		t.Fatalf("seed tenant B: %v", err)
+	}
+	st, m = post("/internal/v1/llm/quota-check", map[string]any{"tenant_id": "22222222-2222-2222-2222-222222222222"})
+	if st != 200 || m["budget"] != float64(-1) {
+		t.Fatalf("no-quota tenant: %d %v（want 200 budget=-1）", st, m)
+	}
+
+	// ⑤ 载荷校验：非法 status / 负 token / 缺 idem_key
+	if st, _ := post("/internal/v1/llm/usage", usage("idem-3", 1, "bogus")); st != 400 {
+		t.Fatalf("bogus status: %d", st)
+	}
+	if st, _ := post("/internal/v1/llm/usage", usage("idem-4", -1, "ok")); st != 400 {
+		t.Fatalf("negative tokens: %d", st)
+	}
+	if st, _ := post("/internal/v1/llm/usage", usage("", 1, "ok")); st != 400 {
+		t.Fatalf("missing idem: %d", st)
+	}
+	// 无 svc token
+	if st, _ := e.post(t, "/internal/v1/llm/quota-check", "", map[string]any{"tenant_id": devTenantID}); st != 401 {
+		t.Fatalf("no svc token: %d", st)
+	}
+}

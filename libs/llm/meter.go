@@ -117,15 +117,17 @@ func (m *Meter) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	ci := CallInfoFrom(ctx)
 	idem := m.idemKey(ci.TraceID)
+	start := m.now()
 
 	// 配额门：超额拒；控制面不可达放行并计数（fail-open，配额是成本护栏不是安全边界）。
 	if err := m.gate.Check(ctx, tenantID); err != nil {
 		var ae *apierror.Error
 		if errors.As(err, &ae) && ae.Code == apierror.CodeQuotaExceeded {
-			m.record(ctx, tenantID, Usage{Model: modelOf(req)}, StatusQuotaRejected, idem)
+			m.record(ctx, tenantID, Usage{Model: modelOf(req)}, StatusQuotaRejected, idem, start, err)
 			return nil, err
 		}
 		m.QuotaCheckFailures.Add(1)
+		llmQuotaCheckFailed.Add(ctx, 1)
 		m.logger.Warn("llm quota check unavailable, fail-open", "err", err, "tenant_id", tenantID)
 	}
 
@@ -134,17 +136,18 @@ func (m *Meter) RoundTrip(req *http.Request) (*http.Response, error) {
 
 	resp, err := m.next.RoundTrip(req)
 	if err != nil {
-		m.record(ctx, tenantID, Usage{Model: logical}, StatusUpstreamError, idem)
-		return nil, apierror.Wrap(apierror.CodeUpstreamLlmFailed, err)
+		wrapped := apierror.Wrap(apierror.CodeUpstreamLlmFailed, err)
+		m.record(ctx, tenantID, Usage{Model: logical}, StatusUpstreamError, idem, start, wrapped)
+		return nil, wrapped
 	}
 	if resp.StatusCode >= 400 {
-		return nil, m.mapError(ctx, resp, tenantID, logical, idem)
+		return nil, m.mapError(ctx, resp, tenantID, logical, idem, start)
 	}
-	return m.wrapResponse(ctx, resp, tenantID, logical, idem)
+	return m.wrapResponse(ctx, resp, tenantID, logical, idem, start)
 }
 
 // wrapResponse 在成功响应上挂用量提取：流式包一层 tee 读到末帧再记；非流式读完正文记完再原样装回。
-func (m *Meter) wrapResponse(ctx context.Context, resp *http.Response, tenantID, logical, idem string) (*http.Response, error) {
+func (m *Meter) wrapResponse(ctx context.Context, resp *http.Response, tenantID, logical, idem string, start time.Time) (*http.Response, error) {
 	cost := parseCostHeader(resp.Header.Get("x-litellm-response-cost"))
 	if isSSE(resp.Header.Get("Content-Type")) {
 		resp.Body = &teeUsageReader{
@@ -157,7 +160,7 @@ func (m *Meter) wrapResponse(ctx context.Context, resp *http.Response, tenantID,
 					u = Usage{Model: logical, Stream: true, CostRefMicro: cost}
 					status = StatusAborted
 				}
-				m.record(context.WithoutCancel(ctx), tenantID, u, status, idem)
+				m.record(context.WithoutCancel(ctx), tenantID, u, status, idem, start, nil)
 			},
 		}
 		return resp, nil
@@ -167,8 +170,9 @@ func (m *Meter) wrapResponse(ctx context.Context, resp *http.Response, tenantID,
 	body, err := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
 	if err != nil {
-		m.record(ctx, tenantID, Usage{Model: logical}, StatusUpstreamError, idem)
-		return nil, apierror.Wrap(apierror.CodeUpstreamLlmFailed, fmt.Errorf("read response: %w", err))
+		wrapped := apierror.Wrap(apierror.CodeUpstreamLlmFailed, fmt.Errorf("read response: %w", err))
+		m.record(ctx, tenantID, Usage{Model: logical}, StatusUpstreamError, idem, start, wrapped)
+		return nil, wrapped
 	}
 	resp.Body = io.NopCloser(bytes.NewReader(body))
 	u, found := extractJSONUsage(body)
@@ -176,7 +180,7 @@ func (m *Meter) wrapResponse(ctx context.Context, resp *http.Response, tenantID,
 	if !found {
 		m.logger.Warn("llm response without usage", "model", logical)
 	}
-	m.record(ctx, tenantID, u, StatusOK, idem)
+	m.record(ctx, tenantID, u, StatusOK, idem, start, nil)
 	return resp, nil
 }
 
@@ -270,32 +274,30 @@ func modelOf(req *http.Request) string {
 }
 
 // mapError 把网关 4xx/5xx 映射成我们的错误码；上游正文只进日志，不透传（R6）。
-func (m *Meter) mapError(ctx context.Context, resp *http.Response, tenantID, logical, idem string) error {
+func (m *Meter) mapError(ctx context.Context, resp *http.Response, tenantID, logical, idem string, start time.Time) error {
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	_ = resp.Body.Close()
 	m.logger.Warn("llm gateway error", "status", resp.StatusCode, "model", logical,
 		"upstream_body_len", len(body))
 
+	var mapped error
 	switch {
 	case resp.StatusCode == http.StatusBadRequest && strings.Contains(string(body), "Invalid model name"):
-		m.record(ctx, tenantID, Usage{Model: logical}, StatusUpstreamError, idem)
-		return apierror.New(apierror.CodeUpstreamLlmModelUnknown)
+		mapped = apierror.New(apierror.CodeUpstreamLlmModelUnknown)
 	case resp.StatusCode == http.StatusGatewayTimeout || resp.StatusCode == http.StatusRequestTimeout:
-		m.record(ctx, tenantID, Usage{Model: logical}, StatusUpstreamError, idem)
-		return apierror.New(apierror.CodeUpstreamLlmTimeout)
-	case resp.StatusCode == http.StatusTooManyRequests:
-		m.record(ctx, tenantID, Usage{Model: logical}, StatusUpstreamError, idem)
-		return apierror.New(apierror.CodeUpstreamLlmFailed)
+		mapped = apierror.New(apierror.CodeUpstreamLlmTimeout)
 	default:
-		m.record(ctx, tenantID, Usage{Model: logical}, StatusUpstreamError, idem)
-		return apierror.Wrap(apierror.CodeUpstreamLlmFailed,
-			fmt.Errorf("gateway http %d", resp.StatusCode))
+		// 含 429（上游限流）与其余 5xx
+		mapped = apierror.Wrap(apierror.CodeUpstreamLlmFailed, fmt.Errorf("gateway http %d", resp.StatusCode))
 	}
+	m.record(ctx, tenantID, Usage{Model: logical}, StatusUpstreamError, idem, start, mapped)
+	return mapped
 }
 
 // record 记账；失败只记日志（Recorder 自带重试与兜底日志，见 console 实现），
 // 绝不让记账失败反向影响调用。
-func (m *Meter) record(ctx context.Context, tenantID string, u Usage, status, idem string) {
+func (m *Meter) record(ctx context.Context, tenantID string, u Usage, status, idem string, start time.Time, callErr error) {
+	observeCall(ctx, u.Model, start, u, status, callErr)
 	if err := m.rec.Record(ctx, tenantID, u, status, idem); err != nil {
 		m.logger.Error("llm usage record failed", "err", err, "tenant_id", tenantID,
 			"model", u.Model, "status", status, "idem_key", idem)

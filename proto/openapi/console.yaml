@@ -13,6 +13,7 @@ tags:
   - { name: agents, description: 智能体注册 }
   - { name: datasource-groups, description: 主备/集群编组 }
   - { name: connectors, description: 客户侧代理（只读） }
+  - { name: llm, description: LLM 网关配额与用量（spec-1.7） }
 
 paths:
   /api/v1/datasources:
@@ -373,6 +374,67 @@ paths:
               schema: { $ref: "#/components/schemas/Connector" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/v1/llm/quota:
+    get:
+      summary: 本租户 LLM 月度 token 配额与本月已用（spec-1.7）
+      operationId: getLLMQuota
+      tags: [llm]
+      responses:
+        "200":
+          description: 配额视图；set=false 表示未设置（Stage 1 语义 = 不限）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LLMQuotaView" }
+        default: { $ref: "#/components/responses/Error" }
+    put:
+      summary: 设置本租户 LLM 月度 token 配额（全量写；下调到已用之下即刻生效）
+      operationId: putLLMQuota
+      tags: [llm]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token_budget, hard_stop]
+              additionalProperties: false
+              properties:
+                token_budget: { type: integer, format: int64, minimum: 0, description: "0 = 禁用 LLM" }
+                hard_stop: { type: boolean, description: "true 超额拒绝；false 只记指标" }
+      responses:
+        "200":
+          description: 写入后的配额
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LLMQuota" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/llm/usage:
+    get:
+      summary: LLM 用量聚合（按天或按模型；单条明细归 spec-1.15 审计）
+      operationId: getLLMUsage
+      tags: [llm]
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date-time }, description: 缺省 to-1h }
+        - { name: to, in: query, schema: { type: string, format: date-time }, description: 缺省 now }
+        - { name: group_by, in: query, schema: { type: string, enum: [day, model], default: day } }
+      responses:
+        "200":
+          description: 聚合结果
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [from, to, group_by, items]
+                properties:
+                  from: { type: string, format: date-time }
+                  to: { type: string, format: date-time }
+                  group_by: { type: string, enum: [day, model] }
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/LLMUsageBucket" }
+        default: { $ref: "#/components/responses/Error" }
+
 components:
   parameters:
     ID:
@@ -556,3 +618,30 @@ components:
         cert_fingerprint: { type: string }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+    LLMQuota:
+      type: object
+      required: [period, token_budget, hard_stop, updated_at]
+      properties:
+        period: { type: string, enum: [monthly] }
+        token_budget: { type: integer, format: int64 }
+        hard_stop: { type: boolean }
+        updated_at: { type: string, format: date-time }
+    LLMQuotaView:
+      allOf:
+        - $ref: "#/components/schemas/LLMQuota"
+        - type: object
+          required: [used_this_month, remaining_tokens, set]
+          properties:
+            used_this_month: { type: integer, format: int64, description: 本自然月（UTC）status ∈ ok/aborted 的 total_tokens 之和 }
+            remaining_tokens: { type: integer, format: int64, description: "max(budget-used,0)；未设置时 -1" }
+            set: { type: boolean, description: false = 无配额行（不限） }
+    LLMUsageBucket:
+      type: object
+      required: [key, calls, failed, prompt_tokens, completion_tokens, total_tokens]
+      properties:
+        key: { type: string, description: 日期 YYYY-MM-DD 或模型逻辑名 }
+        calls: { type: integer, format: int64 }
+        failed: { type: integer, format: int64, description: status ∈ upstream_error/quota_rejected/aborted }
+        prompt_tokens: { type: integer, format: int64 }
+        completion_tokens: { type: integer, format: int64 }
+        total_tokens: { type: integer, format: int64 }

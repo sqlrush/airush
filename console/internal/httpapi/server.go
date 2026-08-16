@@ -89,6 +89,11 @@ func (s *Server) Handler() http.Handler {
 	handle("GET /api/v1/datasources/{id}/snapshots/{kind}", s.latestSnapshot)
 	handle("GET /api/v1/datasources/{id}/snapshots/{kind}/history", s.snapshotHistory)
 
+	// LLM 配额与用量（spec-1.7 D4）：配额 CRUD、用量聚合；单条明细归 spec-1.15 审计。
+	handle("GET /api/v1/llm/quota", s.getLLMQuota)
+	handle("PUT /api/v1/llm/quota", s.putLLMQuota)
+	handle("GET /api/v1/llm/usage", s.llmUsage)
+
 	return s.tenantMiddleware(mux)
 }
 

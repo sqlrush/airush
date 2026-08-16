@@ -17,6 +17,7 @@
 | R6 | LLM 供应商 | **OpenAI 兼容 API**（LiteLLM 网关北向） | DeepSeek/Qwen/GLM/Claude | 网关配置增删供应商 | 零 |
 | R7 | 时序库 | **数据接入层写 API + 查询 repository** | TimescaleDB | 实现 VictoriaMetrics 适配器（写路径已隔离） | 数据接入层内部 |
 | R8 | 数据库引擎接入 | **Connector 采集器 SPI**（Go interface：Collect/Probe/Execute，按协议族） | MySQL/PG/达梦驱动 | 新引擎实现 SPI | Connector 内部 |
+| R9 | **LLM 网关本体**（spec-1.7，2026-08-15 补） | 北向 **OpenAI 兼容 API**（agent 客户端只认它）+ 平台侧 `libs/llm.Meter`（配额/用量在调用方进程与控制面，网关无状态、无 DB、无缓存） | LiteLLM（digest 钉版）| 换 Bifrost / 自研 Go 网关：改 Helm llm 组件 + `AIRUSH_AGENT_LLM_URL`；配额/用量数据与逻辑零改动 | Helm 一个组件；上层零 |
 
 ## 2. 三条契约纪律（CLAUDE.md 规则 8 联动，lint/review 强制）
 
@@ -43,3 +44,4 @@
 | 日期 | 变更 |
 |---|---|
 | 2026-08-09 | 初版 |
+| 2026-08-15 | 增 R9 LLM 网关本体（spec-1.7 落地：LiteLLM 无状态纯路由 + 平台侧 Meter，配额/用量不在网关，故网关整体可换） |

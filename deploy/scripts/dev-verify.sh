@@ -296,6 +296,25 @@ cm=$("${KCTL[@]}" get configmap airush-llm-config -o jsonpath='{.data.config\.ya
 echo "$cm" | grep -E 'api_key|master_key' | grep -vE 'os\.environ/|api_key: mock$' && fail "LLM ConfigMap 出现明文 key"
 echo "  LLM 路由 OK（无 key 401 / chat-default→mock 含 usage / chat-fail→fallback / Responses 桥接 200 / ConfigMap 无明文 key）"
 
+# T21：控制面配额面——默认租户 seed 行在；PUT 改预算 → GET 回读；用量聚合端点可达
+"${KCTL[@]}" port-forward svc/airush-console 18080:8080 >/dev/null 2>&1 &
+PF=$!
+sleep 2
+q=$(curl -sf http://localhost:18080/api/v1/llm/quota) || { kill $PF; fail "GET /api/v1/llm/quota 不可达"; }
+echo "$q" | grep -q '"set":true' || { kill $PF; fail "默认租户无配额 seed 行: ${q}"; }
+code=$(curl -s -o /tmp/airush-llm-quota.json -w '%{http_code}' -X PUT http://localhost:18080/api/v1/llm/quota \
+  -H 'Content-Type: application/json' -d '{"token_budget":123456,"hard_stop":true}')
+[ "$code" = "200" ] || { kill $PF; fail "PUT quota http=${code} $(cat /tmp/airush-llm-quota.json)"; }
+q=$(curl -sf http://localhost:18080/api/v1/llm/quota)
+echo "$q" | grep -q '"token_budget":123456' || { kill $PF; fail "PUT 后回读不一致: ${q}"; }
+# 复原为默认，别把 dev 环境留在小预算上
+curl -s -o /dev/null -X PUT http://localhost:18080/api/v1/llm/quota -H 'Content-Type: application/json' \
+  -d '{"token_budget":50000000,"hard_stop":true}'
+u=$(curl -sf "http://localhost:18080/api/v1/llm/usage?group_by=model") || { kill $PF; fail "GET /api/v1/llm/usage 不可达"; }
+kill $PF 2>/dev/null
+echo "$u" | grep -q '"items"' || fail "usage 响应形态异常: ${u}"
+echo "  LLM 配额面 OK（seed 行在 / PUT→GET 回读 / usage 聚合可达）"
+
 echo "== helm 幂等（再次 upgrade 应零变更零重启） =="
 before=$("${KCTL[@]}" get pods -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | sort)
 helm upgrade --install airush deploy/charts/airush --kube-context kind-airush-dev \

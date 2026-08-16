@@ -41,6 +41,9 @@ type appConfig struct {
 	MetaInterval    time.Duration `env:"META_INTERVAL"    default:"3600s"`
 	// spec-1.5：时序存储写入批上限（超出分批；0 取 tsstore.DefaultBatchMaxRows）。
 	TSBatchMaxRows int `env:"TS_BATCH_MAX_ROWS" default:"5000"`
+	// spec-1.7：默认租户的月度 LLM token 预算（启动时若无配额行则写入；已有的不覆盖——
+	// 运维经 PUT /api/v1/llm/quota 改过的值优先）。0 = 禁用 LLM。
+	LLMDefaultTokenBudget int64 `env:"LLM_DEFAULT_TOKEN_BUDGET" default:"50000000"`
 }
 
 // version 由构建期 -ldflags 注入（spec-0.10/0.11 定版链路）。

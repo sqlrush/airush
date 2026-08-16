@@ -16,6 +16,7 @@ import (
 	"github.com/sqlrush/airush/console/internal/pki"
 	"github.com/sqlrush/airush/console/internal/repo"
 	"github.com/sqlrush/airush/console/internal/svcapi"
+	"github.com/sqlrush/airush/console/internal/tenancy"
 	"github.com/sqlrush/airush/console/internal/tsstore"
 	"github.com/sqlrush/airush/libs/obs"
 )
@@ -141,6 +142,12 @@ func runServer(cfg appConfig, provider *obs.Provider, version string) error {
 	}
 	defer direct.Close()
 
+	// spec-1.7：默认租户无配额行时按配置写入（已有的不覆盖）。失败即拒绝启动——
+	// 没有配额行的租户在 quota-check 语义里是"不限"，静默略过等于把成本护栏关了。
+	if err := ensureDefaultLLMQuota(ctx, cfg, store, provider); err != nil {
+		return fmt.Errorf("ensure default llm quota: %w", err)
+	}
+
 	ts, err := tsstore.New(ctx, cfg.DBURL, cfg.TSBatchMaxRows, provider.Logger)
 	if err != nil {
 		return fmt.Errorf("init timeseries store: %w", err)
@@ -183,5 +190,23 @@ func serveUntilSignal(ctx context.Context, srv *http.Server, provider *obs.Provi
 	}
 	provider.Shutdown(shutdownCtx)
 	provider.Logger.Info("console stopped")
+	return nil
+}
+
+// ensureDefaultLLMQuota 保证默认租户有月度配额行（spec-1.7 §2.6）。
+func ensureDefaultLLMQuota(ctx context.Context, cfg appConfig, store *repo.Store, provider *obs.Provider) error {
+	tctx := tenancy.WithTenant(ctx, cfg.DefaultTenantID)
+	var created bool
+	err := store.InTenantTx(tctx, func(ctx context.Context, tx repo.Tx) error {
+		var err error
+		created, err = repo.EnsureLLMQuota(ctx, tx, cfg.LLMDefaultTokenBudget)
+		return err
+	})
+	if err != nil {
+		return err
+	}
+	if created {
+		provider.Logger.Info("default tenant llm quota created", "token_budget", cfg.LLMDefaultTokenBudget)
+	}
 	return nil
 }
