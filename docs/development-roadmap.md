@@ -16,9 +16,10 @@
 
 ### 0.4 编码前置门槛（user 定，2026-08-08）
 
-1. **codexgo 定向同步（前置专项 P1）**：P0 功能簇（MCP 2026-07-28、线程模型、
-   multiagent v2、token 预算）在 codexgo 仓完成，是 spec-1.8/1.9 的硬前置；
-   与 airush Stage 0 可并行；
+1. **codexgo 定向同步（前置专项 P1，2026-08-16 修订）**：簇 A（MCP 2026-07-28）已在 codexgo
+   主线完成（spec 49，v0.5.0）；其余对齐工作（线程模型接口、multiagent 失败上抛、core 五块）
+   **并入 spec-1.8 的 D0**，在 codexgo 抽核分支 `airush-core` 实施，不再是独立前置
+   （盘点依据 `docs/codexgo-diff-inventory-{bcd,core}.md`）；
 2. **UI 设计（前置专项 P2）**：高保真 mockup 评审定稿 + UI 设计规范沉淀，
    是 spec-1.13/1.14 的硬前置（见 ui-design-brief.md §5）；与 Stage 0/1 后端可并行。
 
@@ -255,4 +256,5 @@ SPEC（编码前讨论） → TDD 编码 → 集成测试 → Code Review → Re
 | spec-1.4 | **frozen · 实施完成**（T1-T13 全过；真 openGauss 5.0.3 校准出 dbe_perf 两处列名错 + 表结构排序错 + spec-1.3 遗留的复制延迟方言错；字面量金丝雀在真机实证；覆盖率 connector 87.3%/console 82.2%/gateway 81.5%/libs-metrics 84.7%；dev-verify ALL PASS 三类快照心跳可见）| 2026-08-12 起草并 approve；08-13 实施完成 |
 | spec-1.5 | **shipped**（T1-T22 全过；AD-10 等效隔离四项门槛 T7-T10 全绿——其中"越权写被拒"初验时没拦住，补 `check_option` 才堵上；R1 基准经视图写入退化 **5.9%**（门槛 30%）故 §8 Q2 选项 A 落地；表数收敛承诺兑现：采集侧固定 3 张表，加采集能力/加引擎只加编译期目录常量；实施中修掉采集器租户上下文漏传（内存 Sink 掩盖了它）与 kind 冷启动两处工程缺陷；覆盖率 console 83.4%/libs-metrics 86.3%/connector 87.3%/gateway 81.0%；dev-verify ALL PASS 含 Direct 与 Connector 两通道落库；code review 后 Top N 排名端点显式 501 移交 spec-1.11、上报链补数据源归属校验）| 2026-08-14 起草并 approve；08-15 实施完成 + review 收口 |
 | spec-1.7 | **shipped**（T1-T21 全过，集成用真 LiteLLM 容器；默认模型 **Kimi K3**（`api.kimi.com/coding/v1`）经集群内网关 + Secret 注入验通 chat/流式 usage/Responses/function_call；LiteLLM 无状态纯路由、配额/用量平台侧（`libs/llm.Meter` + console 内部 API）；实测修正：LiteLLM 空载 ~1.05 GiB、Responses 桥接依赖供应商原生前缀、/metrics 需 key；覆盖率 console 83.1%/libs-llm 88.9%/libs-tenancy 100%；dev-verify ALL PASS 含 T19-T21）| 2026-08-15 起草、approve、实施完成 |
-| 其余 Stage 1 specs | 按修订后顺序起草（1.8 → 1.9 → 1.18-1.20 → …，严格事前 approve） | — |
+| spec-1.8 | **frozen · 实施中**（范围按 2026-08-16 user 定：airush runtime 骨架 + codexgo 侧全部对齐工作（D0，抽核分支 `airush-core`：ThreadStore 对齐 0.147 / id v7 / steer 准入 / 上下文窗口与压缩 / 集中审批阶段 / 客户端健壮性 / 协议新增 / multiagent 失败上抛 / 删 goals·agent_jobs）+ threadstore-PG（0006 四表）+ 租户贯穿与 LLM 接线 + 调度器与 HTTP/SSE 入口 + 无状态排水恢复 + AD-9 审批阶段占位；估 6 周）| 2026-08-16 起草并 approve |
+| 其余 Stage 1 specs | 按修订后顺序起草（1.9 → 1.18-1.20 → …，严格事前 approve） | — |

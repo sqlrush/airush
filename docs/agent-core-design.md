@@ -69,10 +69,12 @@ skill 不在 agent 进程内执行任何命令（AD-3/AD-12）。
 - 指令文档承载租户级约定（报告语言/时区/升级路径）；路由轮次轻量（通常一轮、不挂
   分析 skill），成本可忽略。
 
-## 3. 抽核实施顺序（对应 spec-1.8 拆解）
+## 3. 抽核实施顺序（对应 spec-1.8 拆解，2026-08-16 修订）
 
-1. codexgo 主线完成同步簇 A（MCP）与簇 D（线程模型）——P0 前置；
-2. airush 内建 `agent-runtime/` 模块，vendor codexgo 核心包（go.mod replace 指向抽核分支）；
+> **2026-08-16 user 定**：codexgo 侧的对齐工作（簇 D 接口/id v7/wait 失败上抛 + core 盘点的 5 块：steer 准入、上下文窗口与压缩、集中审批阶段、客户端健壮性、协议新增）**全部并入 spec-1.8**，在 codexgo 仓的抽核分支 `airush-core` 上按 codexgo 纪律实施（DEVIATIONS 登记），是否合回 codexgo 主线由 codexgo 纪律另行决定。依据：`docs/codexgo-diff-inventory-bcd.md`、`docs/codexgo-diff-inventory-core.md`。原"先在主线完成簇 D 再抽核"的硬前置随之取消；簇 A 已完成（codexgo spec 49，v0.5.0）。
+
+1. ~~codexgo 主线完成同步簇 A（MCP）与簇 D（线程模型）——P0 前置~~ → 簇 A 已完成；簇 D 与 core 对齐并入 1.8 的 D0（codexgo 分支）；
+2. airush 内建 `agent-runtime/` 模块，vendor codexgo 核心包（go.mod replace 指向抽核分支 `airush-core`）；
 3. threadstore PG 后端 + 租户上下文注入（TDD：先写多租户隔离测试）；
 4. 会话调度器 + 服务化入口（HTTP/gRPC）；
 5. LLM 网关对接与 token 预算；
@@ -84,3 +86,4 @@ skill 不在 agent 进程内执行任何命令（AD-3/AD-12）。
 |---|---|
 | 2026-08-09 | 初版（AD-11/AD-12 落地设计，同步策略 C 确认后） |
 | 2026-08-09 | 新增 §2.1 会话路由：租户助理 Agent（系统内置、只读、四路定位信号、同会话移交负责 Agent；UI 评审引出，user 定） |
+| 2026-08-16 | §3 修订：codexgo 侧对齐工作（簇 D 接口/id v7/wait 失败上抛 + core 五块）全部并入 spec-1.8（user 定），在 codexgo 抽核分支 `airush-core` 实施；"主线先完成簇 D"硬前置取消。§1.1 带走清单不变，新增按 0.147 吸收的能力见 spec-1.8 §1.1 D0 |
