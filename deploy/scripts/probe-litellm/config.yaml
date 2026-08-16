@@ -11,7 +11,7 @@ model_list:
       api_base: http://host.docker.internal:18099/v1
       api_key: sk-mock
 general_settings:
-  master_key: sk-probe-master
+  master_key: os.environ/LITELLM_MASTER_KEY   # 与生产同法：不在配置文件里写 key
 litellm_settings:
   telemetry: false
   drop_params: true

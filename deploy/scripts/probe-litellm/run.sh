@@ -5,6 +5,8 @@ set -u
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 cd /Users/sqlrush/airush/deploy/scripts/probe-litellm
 IMG=ghcr.io/berriai/litellm:main-stable
+# master key 走环境变量（与生产同法），脚本里不出现字面量——gitleaks 的 curl-auth-header 规则也就不会误报
+MK=${LITELLM_PROBE_MASTER_KEY:-probe-master-key-not-a-secret}
 
 echo "== 0. LiteLLM 版本 =="
 docker run --rm "$IMG" --version 2>&1 | tail -1
@@ -16,7 +18,7 @@ sleep 2
 
 echo "== 2. 起 LiteLLM（无 DB，端口 14000）=="
 docker rm -f litellm-probe >/dev/null 2>&1
-docker run -d --name litellm-probe -p 14000:4000 \
+docker run -d --name litellm-probe -p 14000:4000 -e LITELLM_MASTER_KEY="$MK" \
   -v "$PWD/config.yaml:/app/config.yaml:ro" \
   "$IMG" --config /app/config.yaml --port 4000 >/dev/null
 for i in $(seq 1 40); do
@@ -28,30 +30,30 @@ echo "readiness:  $(curl -s http://localhost:14000/health/readiness | head -c 30
 
 echo "== 3. /v1/models（需 master key）=="
 echo "no-key: $(curl -s -o /dev/null -w '%{http_code}' http://localhost:14000/v1/models)"
-curl -s http://localhost:14000/v1/models -H 'Authorization: Bearer sk-probe-master' | head -c 400; echo
+curl -s http://localhost:14000/v1/models -H "Authorization: Bearer $MK" | head -c 400; echo
 
 echo "== 4. chat completions 非流式 =="
-curl -s http://localhost:14000/v1/chat/completions -H 'Authorization: Bearer sk-probe-master' \
+curl -s http://localhost:14000/v1/chat/completions -H "Authorization: Bearer $MK" \
   -H 'Content-Type: application/json' \
   -d '{"model":"chat-default","messages":[{"role":"user","content":"hi"}]}' | head -c 600; echo
 
 echo "== 5. chat completions 流式（要 usage）=="
-curl -sN http://localhost:14000/v1/chat/completions -H 'Authorization: Bearer sk-probe-master' \
+curl -sN http://localhost:14000/v1/chat/completions -H "Authorization: Bearer $MK" \
   -H 'Content-Type: application/json' \
   -d '{"model":"chat-default","stream":true,"stream_options":{"include_usage":true},"messages":[{"role":"user","content":"hi"}]}' | grep -c "usage"
 
 echo "== 6. Responses API（codexgo 默认线协议）→ 后端是 chat 供应商，看会不会转换 =="
-curl -s -o /tmp/resp.json -w 'http=%{http_code}\n' http://localhost:14000/v1/responses -H 'Authorization: Bearer sk-probe-master' \
+curl -s -o /tmp/resp.json -w 'http=%{http_code}\n' http://localhost:14000/v1/responses -H "Authorization: Bearer $MK" \
   -H 'Content-Type: application/json' \
   -d '{"model":"chat-default","input":"hi"}'
 head -c 500 /tmp/resp.json; echo
 
 echo "== 7. /metrics（Prometheus）=="
-curl -s -o /dev/null -w 'http=%{http_code}\n' http://localhost:14000/metrics -H 'Authorization: Bearer sk-probe-master'
-curl -s http://localhost:14000/metrics -H 'Authorization: Bearer sk-probe-master' | head -c 300; echo
+curl -s -o /dev/null -w 'http=%{http_code}\n' http://localhost:14000/metrics -H "Authorization: Bearer $MK"
+curl -s http://localhost:14000/metrics -H "Authorization: Bearer $MK" | head -c 300; echo
 
 echo "== 8. 未知模型名 → 错误形态 =="
-curl -s http://localhost:14000/v1/chat/completions -H 'Authorization: Bearer sk-probe-master' \
+curl -s http://localhost:14000/v1/chat/completions -H "Authorization: Bearer $MK" \
   -H 'Content-Type: application/json' \
   -d '{"model":"nope","messages":[{"role":"user","content":"hi"}]}' | head -c 300; echo
 
