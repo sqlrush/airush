@@ -1,0 +1,19 @@
+# 第二轮：① 用 deepseek/ 供应商前缀看 Responses→Chat 是否桥接；② 打开 prometheus 回调看是否可用；
+# ③ 打开 json_logs 看成功路径日志里有没有 prompt。
+model_list:
+  - model_name: chat-deepseek
+    litellm_params:
+      model: deepseek/mock-model
+      api_base: http://host.docker.internal:18099/v1
+      api_key: sk-mock
+  - model_name: chat-openai
+    litellm_params:
+      model: openai/mock-model
+      api_base: http://host.docker.internal:18099/v1
+      api_key: sk-mock
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY   # 与生产同法：不在配置文件里写 key
+litellm_settings:
+  telemetry: false
+  json_logs: true
+  callbacks: ["prometheus"]

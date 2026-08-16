@@ -66,10 +66,11 @@
 | TimescaleDB | 采集指标 | Stage 1 | hypertable 分区键 + RLS |
 | pgvector | 文档 RAG | Stage 1 | RLS |
 | Redis | 上下文缓存 / 队列 | Stage 1 | key 前缀 `t:{tenant_id}:` + ACL |
-| Neo4j + Graphiti | 记忆 + 运维知识图谱 | Stage 3 | Graphiti group_id |
+| Neo4j + Graphiti | 记忆 + 运维知识图谱 | **Stage 1**（原 Stage 3，2026-08-15 提前，见 roadmap §3） | Graphiti group_id |
 
 ## 6. 修订历史
 
 | 日期 | 变更 |
 |---|---|
 | 2026-08-09 | 初版：AD-5/6/7 深化论证 + 替换路径 |
+| 2026-08-15 | §5：Neo4j + Graphiti 引入 Stage 3 → **Stage 1**（user 定智能体框架优先，随 roadmap 1.18-1.20 提前）；选型与替换路径不变 |

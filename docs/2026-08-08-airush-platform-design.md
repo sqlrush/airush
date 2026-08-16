@@ -106,7 +106,7 @@ Skill 注册表存控制面（记录 MCP endpoint 与租户可见性）；agent 
 | TimescaleDB（PG 插件） | 采集指标时序数据 | Stage 1 |
 | pgvector（PG 插件） | 文档 RAG（runbook、产品手册） | Stage 1 |
 | Redis | 会话上下文缓存、任务队列 | Stage 1 |
-| Neo4j + Graphiti | agent 时序记忆 + 运维知识图谱 | Stage 3 |
+| Neo4j + Graphiti | agent 时序记忆 + 运维知识图谱 | **Stage 1**（原 Stage 3，2026-08-15 user 定提前：先搭完智能体框架再做数据库功能；roadmap spec-1.18/1.19/1.20） |
 
 **同一 PG 实例内的 schema 划分**（spec-1.5 落地，2026-08-15 补记）：
 
@@ -162,3 +162,4 @@ Skill 注册表存控制面（记录 MCP endpoint 与租户可见性）；agent 
 | 2026-08-08 | 新增 AD-11（Agent 核心 = codexgo 抽核）、AD-12（Skill 协议 = MCP）；技术栈联动变更：Agent Runtime Python→Go、Skill gRPC→MCP、新增记忆服务组件 | user（选型问答确认） |
 | 2026-08-10 | AD-2 增平台直连模式（本地部署 k8s 为主）、AD-4 改分模式凭据边界（直连凭据平台加密保管）；MVP 蓝本 MySQL→openGauss（PG 协议族），MySQL 族移至 Stage 3；Stage 4 移除计费系统 | user（roadmap 三项调整指示） |
 | 2026-08-14 | AD-10 由"必须 RLS"改为"必须由数据库强制隔离"，新增等效形态（基表零授权 + security_barrier 视图 + WITH CHECK OPTION）及其四项准入门槛；AD-7 登记"列存压缩与 RLS 互斥"实测约束。**起因**：spec-1.5 起草时发现 TimescaleDB 压缩与 RLS 在同一表不可共存，两条 AD 直接冲突；等效形态经 `deploy/scripts/probe-timescale-rls2.sh` 实测四项全过（其中越权写入初验未拦住，补 WITH CHECK OPTION 后堵上） | user（选项 A） |
+| 2026-08-15 | §2.5 存储矩阵：Neo4j + Graphiti 引入阶段 Stage 3 → **Stage 1**。**起因**：user 定"先把智能体框架全部搭建出来，再做具体的数据库功能"，记忆/知识库属智能体框架，随 roadmap spec-1.18/1.19/1.20 提前；同批 spec-1.6 脱敏移出 MVP 归 Stage 2。AD 表无变更（AD-5/AD-6 选型不变，只改引入节奏） | user（顺序指示） |
