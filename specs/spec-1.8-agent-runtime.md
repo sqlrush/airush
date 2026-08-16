@@ -410,3 +410,11 @@ CREATE TABLE agent_graph_edges (
 - **spec-2.8**：租户并发上限接控制面配额；
 - **spec-3.9**：定时巡检走任务队列 + KEDA，复用调度器；
 - **codexgo spec 50**：D0 在 codexgo 侧的正式载体。
+
+## §11 实施 Changelog（frozen 后追加，不重写正文）
+
+| 日期 | 变更 |
+|---|---|
+| 2026-08-16 | **两条硬门槛落地**：① CI 二次 checkout——codexgo 仓为 public，`actions/checkout` 第二仓无需 PAT（Q7 顾虑消掉）；② **传递依赖清单经 user 批准（"通过，开码"）**：抽核目标包新增直接依赖 `github.com/pelletier/go-toml/v2`、`github.com/klauspost/compress`、`github.com/rivo/uniseg` 三项（`google/uuid` airush 已有）；SQLite（modernc）、go-git、goja、age、go-keyring、creack/pty、mvdan.cc/sh、coder/websocket **不进 airush**——由 codexgo 侧 D0.9 缝合切掉。SQLite 的用途已向 user 说明：codexgo CLI 的本地 thread store / agent graph / state 持久化，airush 用 PG 实现替代 |
+| 2026-08-16 | **D0.9 缝合完成（codexgo `airush-core` 分支 8 个 commit，见 codexgo spec 50 changelog）**：实际子包 `core/localexec`、`threadstore/local`、`agentgraph/local`（+ `agentgraphtest` 行为套件，pgstore 可复用）、`codemode/engine`、`api/responsesws`、`keyring/system`、`gitutils/gitroot`、`shell`、`ptycap`；core 导出执行器契约 + `SessionArmer`；`BuiltinToolDeps` 改为 `ShellTools`/`ApplyPatch` 注入（airush 不装配 = 进程内无任何本地命令执行，AD-9/AD-12 在类型层面成立）；`mcp.ManagerOptions.Keyring` 注入（airush 传 nil）。**收敛结果**（`deploy/scripts/mac-codexgo-deps.sh`，目标包 = core/coretest/protocol/api/client/mcp/multiagent/agentgraph/threadstore/rollout/config/modelproviderinfo/modelsmanager/skills/tools/msghistory/hooks/features）：第三方模块恰为 uuid + 三项已批，未审项为空。§1 D0 表的"依赖清单"项据此关闭 |
+| 2026-08-16 | **D0.1 前置的一个附带决定**：`agentgraph` 行为用例改为导出的 `agentgraphtest.RunSuite(t, factory)`（in-memory / SQLite / airush PG 三种实现跑同一套），与 D0.1 计划中的 `threadstore/contracttest` 同一形态；D2 的 pgstore 验收直接引用 |
