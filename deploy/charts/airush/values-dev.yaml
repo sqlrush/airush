@@ -29,3 +29,22 @@ storage:
     resources:
       requests: { cpu: 50m, memory: 64Mi }
       limits: { cpu: 250m, memory: 128Mi }
+llm:
+  enabled: true
+  mockProvider:
+    enabled: true          # sidecar 假供应商，dev-verify 不持有真实 key
+  models:                  # 全部指向 mock（模板按 mockProvider 改写 litellm_params）
+    - name: chat-default
+      litellm: deepseek/mock-default
+      apiKeyEnv: MOCK
+    - name: chat-strong
+      litellm: deepseek/mock-strong
+      apiKeyEnv: MOCK
+    - name: chat-fail      # 上游恒 500 的模型（mock 按名字判定），供 fallback 断言
+      litellm: deepseek/mock-fail
+      apiKeyEnv: MOCK
+  fallbacks:
+    chat-fail: [chat-default]
+  resources:                 # 实测空载 ~1.05 GiB，见 values.yaml llm.resources 注释
+    requests: { cpu: 200m, memory: 1280Mi }
+    limits: { cpu: "1", memory: 1536Mi }

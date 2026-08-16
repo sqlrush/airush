@@ -5,7 +5,7 @@
 SHELL := /bin/bash
 GO_MODULES := console connector gateway agent-runtime
 # GO_ALL 含非组件模块（testkit 等）：参与 lint/test/cover，不产二进制
-GO_ALL := $(GO_MODULES) testkit libs/config libs/apierror libs/obs libs/accessor libs/metrics proto/gen/go
+GO_ALL := $(GO_MODULES) testkit libs/config libs/apierror libs/obs libs/accessor libs/metrics libs/tenancy libs/llm proto/gen/go
 
 # 本仓库使用 go.work 工作区；强制 -mod=readonly，避免用户全局 -mod=mod 与
 # workspace 模式冲突（workspace 下 -mod 仅允许 readonly/vendor）。
@@ -242,6 +242,11 @@ image-console image-connector image-gateway image-agent-runtime:
 		-t $(REGISTRY)/$(C):$(GIT_SHA) -t $(REGISTRY)/$(C):latest .
 	@if [ "$(PUSH)" = "true" ]; then docker push $(REGISTRY)/$(C):$(GIT_SHA) && docker push $(REGISTRY)/$(C):latest; fi
 
+## image-mockllm（仅 dev，spec-1.7 D1）：LiteLLM sidecar 假供应商；不进生产 values
+image-mockllm:
+	docker build -f deploy/docker/mockllm.Dockerfile \
+		-t $(REGISTRY)/mockllm:$(GIT_SHA) -t $(REGISTRY)/mockllm:latest .
+
 image-skills:
 	docker build -f deploy/docker/python.Dockerfile \
 		-t $(REGISTRY)/skills:$(GIT_SHA) -t $(REGISTRY)/skills:latest .
@@ -258,8 +263,8 @@ KIND_CLUSTER := airush-dev
 dev-up:
 	@kind get clusters 2>/dev/null | grep -qx $(KIND_CLUSTER) || \
 		kind create cluster --config deploy/kind/config.yaml
-	@$(MAKE) image-gateway image-console image-connector
-	kind load docker-image $(REGISTRY)/gateway:latest $(REGISTRY)/console:latest $(REGISTRY)/connector:latest --name $(KIND_CLUSTER)
+	@$(MAKE) image-gateway image-console image-connector image-mockllm
+	kind load docker-image $(REGISTRY)/gateway:latest $(REGISTRY)/console:latest $(REGISTRY)/connector:latest $(REGISTRY)/mockllm:latest --name $(KIND_CLUSTER)
 	@# --kube-context 显式绑定：集群已存在时上面不会 kind create，helm 就会打到
 	@# kubectl 的当前 context 上——机器上若还有别的集群（orbstack 等），这是往错误
 	@# 集群发布。下面所有 kubectl 都带 --context，helm 不能例外。

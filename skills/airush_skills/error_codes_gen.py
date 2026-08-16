@@ -14,6 +14,7 @@ ERROR_CODES: dict[str, dict[str, object]] = {
     "AR_INTERNAL_ERROR": {"level": "E4", "http": 500, "message": "服务内部错误", "deprecated": False},
     "AR_UPSTREAM_LLM_TIMEOUT": {"level": "E5", "http": 504, "message": "模型服务响应超时，请稍后重试", "deprecated": False},
     "AR_UPSTREAM_LLM_FAILED": {"level": "E5", "http": 502, "message": "模型服务暂不可用，请稍后重试", "deprecated": False},
+    "AR_UPSTREAM_LLM_MODEL_UNKNOWN": {"level": "E1", "http": 400, "message": "请求的模型不存在", "deprecated": False},
     "AR_UPSTREAM_CONNECTOR_OFFLINE": {"level": "E5", "http": 503, "message": "数据源接入器离线，请检查 Connector 状态", "deprecated": False},
     "AR_QUOTA_EXCEEDED": {"level": "E6", "http": 429, "message": "请求超出配额限制，请稍后重试", "deprecated": False},
     "AR_DATASOURCE_NOT_FOUND": {"level": "E3", "http": 404, "message": "数据源不存在", "deprecated": False},
