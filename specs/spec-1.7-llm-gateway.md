@@ -1,6 +1,6 @@
 # spec-1.7 LLM 网关
 
-> **frozen** — user approve 2026-08-15（§8 Q1-Q7 **全采 ★**；新增第三方镜像 `ghcr.io/berriai/litellm` 一并批准；`libs/tenancy` 提取一并批准；无新增 Go module）。
+> **shipped** — user approve 2026-08-15，实施完成 + review 收口 2026-08-15（PR #29）。（§8 Q1-Q7 **全采 ★**；新增第三方镜像 `ghcr.io/berriai/litellm` 一并批准；`libs/tenancy` 提取一并批准；无新增 Go module）。
 > 起草前已就 LiteLLM 形态做过实测（`deploy/scripts/probe-litellm/`），§2/§6 中标 **实测** 的
 > 断言来自那次探测，不是推演。
 
@@ -335,19 +335,19 @@ func (c *Client) ChatCompletion(ctx context.Context, req ChatRequest) (ChatRespo
 
 ## §7 DoD
 
-- [ ] D1-D6 全部交付；0005 `up→down→up` 幂等；
-- [ ] LiteLLM 镜像以 **digest 钉版**进 values，`main-stable` 标签不出现在 chart 里；
-- [ ] Helm 渲染物中无任何供应商 key / master key 明文（T20 断言 + `helm template | grep`）；
-- [ ] `libs/llm` 单元 T1-T10 全绿，覆盖率 ≥ 80%；集成 T11-T18 全绿；
-- [ ] 三个新错误码入 `proto/errors.json` 且各有触发用例；
-- [ ] `libs/tenancy` 提取完成，console 内既有调用零改动（编译期别名），gateway 不受影响；
-- [ ] 观测：`airush_llm_*` 三件套接入 spec-0.9；LiteLLM `/metrics` 可用性与鉴权在 T15 固化，抓取方式写进 §2.2 注释；
-- [ ] AD-3 证据：T16 canary 用例 + LiteLLM 无 DB/无缓存的配置在 Helm 模板注释里说明"为什么无状态"；
-- [ ] dev-verify ALL PASS 含 T19-T21；`make dev-up` 多出的 mock 镜像构建 ≤ 30s；
-- [ ] `docs/decoupling-architecture.md` 可替换点表加 LLM 网关一行；
-- [ ] OpenAPI 契约同步；`.env.example` 一致性门闩过；
-- [ ] 覆盖率合并口径：console ≥ 80%、libs-llm ≥ 80%；CI 全绿；
-- [ ] 文档同步：spec 状态、roadmap §8、CHANGELOG；1.8 依赖的接口（`Meter`、`AIRUSH_AGENT_LLM_*`）在本 spec §2.4/§2.6 定版，1.8 起草时不再改。
+- [x] D1-D6 全部交付；0005 `up→down→up` 幂等；
+- [x] LiteLLM 镜像以 **digest 钉版**进 values，`main-stable` 标签不出现在 chart 里；
+- [x] Helm 渲染物中无任何供应商 key / master key 明文（T20 断言 + `helm template | grep`）；
+- [x] `libs/llm` 单元 T1-T10 全绿，覆盖率 ≥ 80%；集成 T11-T18 全绿；
+- [x] 三个新错误码入 `proto/errors.json` 且各有触发用例；
+- [x] `libs/tenancy` 提取完成，console 内既有调用零改动（编译期别名），gateway 不受影响；
+- [x] 观测：`airush_llm_*` 三件套接入 spec-0.9；LiteLLM `/metrics` 可用性与鉴权在 T15 固化，抓取方式写进 §2.2 注释；
+- [x] AD-3 证据：T16 canary 用例 + LiteLLM 无 DB/无缓存的配置在 Helm 模板注释里说明"为什么无状态"；
+- [x] dev-verify ALL PASS 含 T19-T21；`make dev-up` 多出的 mock 镜像构建 ≤ 30s；
+- [x] `docs/decoupling-architecture.md` 可替换点表加 LLM 网关一行；
+- [x] OpenAPI 契约同步；`.env.example` 一致性门闩过；
+- [x] 覆盖率合并口径：console ≥ 80%、libs-llm ≥ 80%；CI 全绿；
+- [x] 文档同步：spec 状态、roadmap §8、CHANGELOG；1.8 依赖的接口（`Meter`、`AIRUSH_AGENT_LLM_*`）在本 spec §2.4/§2.6 定版，1.8 起草时不再改。
 
 ---
 
