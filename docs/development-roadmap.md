@@ -16,9 +16,10 @@
 
 ### 0.4 编码前置门槛（user 定，2026-08-08）
 
-1. **codexgo 定向同步（前置专项 P1）**：P0 功能簇（MCP 2026-07-28、线程模型、
-   multiagent v2、token 预算）在 codexgo 仓完成，是 spec-1.8/1.9 的硬前置；
-   与 airush Stage 0 可并行；
+1. **codexgo 定向同步（前置专项 P1，2026-08-16 修订）**：簇 A（MCP 2026-07-28）已在 codexgo
+   主线完成（spec 49，v0.5.0）；其余对齐工作（线程模型接口、multiagent 失败上抛、core 五块）
+   **并入 spec-1.8 的 D0**，在 codexgo 抽核分支 `airush-core` 实施，不再是独立前置
+   （盘点依据 `docs/codexgo-diff-inventory-{bcd,core}.md`）；
 2. **UI 设计（前置专项 P2）**：高保真 mockup 评审定稿 + UI 设计规范沉淀，
    是 spec-1.13/1.14 的硬前置（见 ui-design-brief.md §5）；与 Stage 0/1 后端可并行。
 
