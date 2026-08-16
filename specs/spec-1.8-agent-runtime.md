@@ -1,6 +1,6 @@
 # spec-1.8 Agent Runtime 骨架（codexgo 抽核服务化 + 对齐 0.147 五块）
 
-> **DRAFT — 待 user approve**（2026-08-16 起草）。Stage 1 严格事前 approve，approve 前不动代码。
+> **frozen** — user approve 2026-08-16（§8 Q1-Q9 **全采 ★**；`agents.default_model` 追加迁移一并批准；codexgo 传递依赖清单与 CI 二次 checkout 凭据两条硬门槛在 §9 步骤 1 落实后再单独请批）。
 > 范围按 2026-08-16 user 决定：**airush 侧 runtime 骨架 + codexgo 侧全部对齐工作**（簇 D 接口 / id v7 / wait
 > 失败上抛 + core 盘点五块）整合进本 spec，一份 spec、一条实施线。依据 `docs/codexgo-diff-inventory-bcd.md`、
 > `docs/codexgo-diff-inventory-core.md`、`docs/agent-core-design.md`（2026-08-16 修订）。
@@ -26,7 +26,7 @@
   codexgo 传递依赖随之进入 airush 的 lockfile（CI 安全扫描覆盖）——**其中若含 airush 未审的第三方直接依赖，
   在 D0 步骤 1 列清单请批**（预计：`google/uuid` 已有、`mvdan.cc/sh`（applypatch，不带走）等应被裁掉）；
   **无新增系统服务**（PG/Redis/LiteLLM 均已有）；
-- **决策日期**：起草 2026-08-16；approve 待定。
+- **决策日期**：2026-08-16 起草并 approve（§8 全 ★）。
 
 ---
 
