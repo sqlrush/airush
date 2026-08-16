@@ -3,6 +3,8 @@ package llm
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -77,6 +79,9 @@ type Meter struct {
 	QuotaCheckFailures atomic.Int64
 	seq                atomic.Int64
 	now                func() time.Time
+	// nonce 是本 Meter 实例的随机标识，进幂等键：同一 trace 若跨两个 runtime 副本重放，
+	// 仅靠进程内序号会撞键，第二笔被当重复静默丢掉。
+	nonce string
 }
 
 // Option 配置 Meter。
@@ -100,6 +105,7 @@ func NewMeter(next http.RoundTripper, gate QuotaGate, rec Recorder, opts ...Opti
 	m := &Meter{
 		next: next, gate: gate, rec: rec,
 		logger: slog.New(slog.NewTextHandler(io.Discard, nil)), now: time.Now,
+		nonce: randomNonce(),
 	}
 	for _, o := range opts {
 		o(m)
@@ -118,12 +124,13 @@ func (m *Meter) RoundTrip(req *http.Request) (*http.Response, error) {
 	ci := CallInfoFrom(ctx)
 	idem := m.idemKey(ci.TraceID)
 	start := m.now()
+	logical := modelOf(req) // 只 peek 一次（读后放回），配额拒绝路径也要记模型名
 
 	// 配额门：超额拒；控制面不可达放行并计数（fail-open，配额是成本护栏不是安全边界）。
 	if err := m.gate.Check(ctx, tenantID); err != nil {
 		var ae *apierror.Error
 		if errors.As(err, &ae) && ae.Code == apierror.CodeQuotaExceeded {
-			m.record(ctx, tenantID, Usage{Model: modelOf(req)}, StatusQuotaRejected, idem, start, err)
+			m.record(ctx, tenantID, Usage{Model: logical}, StatusQuotaRejected, idem, start, err)
 			return nil, err
 		}
 		m.QuotaCheckFailures.Add(1)
@@ -132,7 +139,6 @@ func (m *Meter) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 
 	req = m.prepare(req, tenantID, ci)
-	logical := modelOf(req)
 
 	resp, err := m.next.RoundTrip(req)
 	if err != nil {
@@ -214,8 +220,7 @@ func (m *Meter) prepare(req *http.Request, tenantID string, ci CallInfo) *http.R
 	r.Body = io.NopCloser(bytes.NewReader(body))
 	r.ContentLength = int64(len(body))
 	r.GetBody = func() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(body)), nil }
-	// 后面 modelOf 还要读，也让 next 能重放
-	req.Body = io.NopCloser(bytes.NewReader(body))
+	// 不回写 req.Body：RoundTripper 不得修改调用方的请求；原 body 已按契约被消费并关闭。
 	return r
 }
 
@@ -304,11 +309,19 @@ func (m *Meter) record(ctx context.Context, tenantID string, u Usage, status, id
 	}
 }
 
-// idemKey = trace_id + 进程内序号；无 trace 时用时间戳纳秒兜底（仍唯一，只是不可关联）。
+// idemKey = trace_id + 实例 nonce + 进程内序号；无 trace 时用时间戳纳秒兜底（仍唯一，只是不可关联）。
 func (m *Meter) idemKey(traceID string) string {
 	n := m.seq.Add(1)
 	if traceID == "" {
-		return fmt.Sprintf("notrace-%d-%d", m.now().UnixNano(), n)
+		return fmt.Sprintf("notrace-%s-%d-%d", m.nonce, m.now().UnixNano(), n)
 	}
-	return fmt.Sprintf("%s-%d", traceID, n)
+	return fmt.Sprintf("%s-%s-%d", traceID, m.nonce, n)
+}
+
+func randomNonce() string {
+	b := make([]byte, 4)
+	if _, err := rand.Read(b); err != nil {
+		return fmt.Sprintf("%x", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(b)
 }
