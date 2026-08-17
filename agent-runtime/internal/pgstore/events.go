@@ -12,11 +12,12 @@ import (
 	"github.com/sqlrush/codexgo/pkg/rollout"
 	"github.com/sqlrush/codexgo/pkg/threadstore"
 
+	"github.com/sqlrush/airush/agent-runtime/internal/approvals"
 	"github.com/sqlrush/airush/libs/apierror"
 )
 
 // Event types written to agent_rollout_events (spec-1.8 §3.3 白名单)：
-//   - EventMsg 项：event_type = protocol.EventMsg 变体名（snake_case）；
+//   - EventMsg 项：event_type = protocol.EventMsg 变体名（snake_case）+ runtime 自有的两种审批事件（§3.6）；
 //   - 其它 rollout 项：session_meta / turn_context / response_item / compacted_item。
 //
 // 未知 EventMsg 变体（无法序列化）显式拒绝（AR_AGENT_EVENT_UNKNOWN）；payload 超过内联上限
@@ -41,7 +42,10 @@ func eventTypeOf(item rollout.RolloutItem) (string, error) {
 	case rollout.RolloutItemKindCompacted:
 		return EventTypeCompacted, nil
 	case rollout.RolloutItemKindEventMsg:
-		if item.EventMsg == nil || item.EventMsg.Type == "" || !knownEventMsg(*item.EventMsg) {
+		if item.EventMsg == nil || item.EventMsg.Type == "" {
+			return "", apierror.New(apierror.CodeAgentEventUnknown)
+		}
+		if !knownEventMsg(*item.EventMsg) && !runtimeEvent(*item.EventMsg) {
 			return "", apierror.New(apierror.CodeAgentEventUnknown)
 		}
 		return string(item.EventMsg.Type), nil
@@ -240,4 +244,16 @@ func truncatedPlaceholder(ref string) protocol.ResponseItem {
 			Text: fmt.Sprintf("[tool output truncated: exceeded the inline limit; stored at %s]", ref),
 		}},
 	}
+}
+
+// runtimeEvent 放行 airush runtime 自有的两种审批事件（spec-1.8 §3.6，forward-compat 形态：
+// Type + Raw，且 Raw 的 type 字段必须与 Type 一致，防止拿放行名字夹带别的载荷）。
+func runtimeEvent(ev protocol.EventMsg) bool {
+	if !approvals.IsRuntimeEvent(string(ev.Type)) || len(ev.Raw) == 0 {
+		return false
+	}
+	var probe struct {
+		Type string `json:"type"`
+	}
+	return json.Unmarshal(ev.Raw, &probe) == nil && probe.Type == string(ev.Type)
 }

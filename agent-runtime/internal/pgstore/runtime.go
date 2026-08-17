@@ -139,13 +139,18 @@ func (s *Store) MarkStaleRunningInterrupted(ctx context.Context, staleAfter time
 	}
 	var out []StaleRunningThread
 	for _, tenantID := range tenants {
-		hits, err := s.markStaleForTenant(tenancy.WithTenant(ctx, tenantID), staleAfter)
+		hits, err := s.markStaleForTenant(tenantCtx(ctx, tenantID), staleAfter)
 		if err != nil {
 			return nil, err
 		}
 		out = append(out, hits...)
 	}
 	return out, nil
+}
+
+// tenantCtx 给跨租户扫描的每一步派生租户 ctx（不含请求级取消以外的东西）。
+func tenantCtx(ctx context.Context, tenantID string) context.Context {
+	return tenancy.WithTenant(ctx, tenantID)
 }
 
 // listTenantIDs 读 tenants 主档（系统表，不挂 RLS）。
@@ -301,5 +306,22 @@ func (s *Store) AdmitInput(ctx context.Context, inputID, turnID string) error {
 	return s.InTenantTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		_, err := tx.Exec(ctx, `UPDATE agent_thread_queue SET admitted_turn_id = $2 WHERE id = $1 AND admitted_turn_id IS NULL`, inputID, turnID)
 		return storeErr(err, "admit input %s", inputID)
+	})
+}
+
+// MarkIdle 把 interrupted 线程置回 idle（ResumeThread：可再被领取）；其它状态无操作。
+func (s *Store) MarkIdle(ctx context.Context, threadID protocol.ThreadID) error {
+	return s.InTenantTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `UPDATE agent_threads SET status = 'idle', running_pod = NULL, heartbeat_at = NULL, updated_at = now()
+			WHERE id = $1 AND status = 'interrupted'`, threadID.String())
+		return storeErr(err, "mark idle %s", threadID)
+	})
+}
+
+// DeleteInput 删除一条队列输入（已消费的中断指令 / 无法解析的载荷）。
+func (s *Store) DeleteInput(ctx context.Context, inputID string) error {
+	return s.InTenantTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `DELETE FROM agent_thread_queue WHERE id = $1`, inputID)
+		return storeErr(err, "delete input %s", inputID)
 	})
 }

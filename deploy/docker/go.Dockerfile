@@ -5,7 +5,15 @@ ARG COMPONENT=gateway
 
 FROM golang:1.26 AS builder
 ARG COMPONENT
+# spec-1.8 §8 Q1/Q7：agent-runtime 经 go.mod replace 消费 codexgo 抽核分支（../../codexgo 相对
+# agent-runtime 目录 = /codexgo）。构建上下文里没有它，按 deploy/codexgo.lock 钉住的 commit 拉取
+# （公开仓，无凭据；--depth 1 只取该 commit）。其它组件不需要它（工作区里的缺失 replace 只在
+# 真正编译 agent-runtime 时才报错），但 go.work 是共享的，统一在这里准备最省事。
 WORKDIR /src
+COPY deploy/codexgo.lock deploy/codexgo.lock
+RUN set -eux; commit=$(grep -E "^[0-9a-f]{40}$" deploy/codexgo.lock | head -1); \
+    git init -q /codexgo && git -C /codexgo remote add origin https://github.com/sqlrush/codexgo \
+    && git -C /codexgo fetch -q --depth 1 origin "$commit" && git -C /codexgo checkout -q --detach FETCH_HEAD
 # 先拷贝依赖清单利用层缓存
 COPY go.work go.work.sum* ./
 COPY console/go.mod console/go.sum* console/

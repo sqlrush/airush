@@ -94,8 +94,30 @@ llm:
   mockProvider:
     enabled: false
 
+# spec-1.8 agent-runtime（AD-11：codexgo 抽核宿主，无状态；AD-1：会话状态全在控制面 PG）。
+# 需要 console.enabled（配额门/记账 + svc token）、llm.enabled（LLM 网关 + master key）。
+agentRuntime:
+  enabled: false
+  replicas: 1
+  listen: ":8082"
+  # 控制面 PG 连接串；空且 storage.builtin=true 时自动指向内置 PG（与 console 同库）
+  dbUrl: ""
+  # LLM 网关根；空 = 本 release 的 llm Service（http://<release>-llm:4000/v1）
+  llmUrl: ""
+  defaultModel: chat-default
+  # 单 pod 并发 turn 上限（Stage 1：也是每租户上限）
+  maxConcurrentTurns: 8
+  # preStop 排水：等在飞 turn 上限；terminationGracePeriodSeconds = 排水 + 30s 余量
+  drainTimeout: "300s"
+  terminationGracePeriodSeconds: 330
+  # 静态 skill MCP endpoints："name=url,name2=url2"（streamable HTTP）；spec-1.9 换注册表
+  mcpEndpoints: ""
+  resources:
+    requests: { cpu: 250m, memory: 256Mi }
+    limits: { cpu: "1", memory: 1Gi }
+
 # 其余组件槽位（模板随对应 spec 添加，见 spec-0.10 实施修订）：
-# agent-runtime → spec-1.8；skills → spec-1.9；frontend → spec-1.13；
+# skills → spec-1.9；frontend → spec-1.13；
 # connector 为客户侧组件，不入平台 chart。
 
 storage:

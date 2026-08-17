@@ -48,3 +48,11 @@ llm:
   resources:                 # 实测空载 ~1.05 GiB，见 values.yaml llm.resources 注释
     requests: { cpu: 200m, memory: 1280Mi }
     limits: { cpu: "1", memory: 1536Mi }
+agentRuntime:
+  enabled: true
+  maxConcurrentTurns: 4
+  drainTimeout: "60s"
+  terminationGracePeriodSeconds: 90
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 512Mi }

@@ -23,6 +23,8 @@ type Server struct {
 	defaultTenantID string
 	// collected 是采集数据只读查询面（spec-1.5 D4）；nil 时相关路由返回 501。
 	collected CollectedReader
+	// agent 是 agent-runtime 反代（spec-1.8 D4）；nil 时 /api/v1/agent/* 不挂（404）。
+	agent http.Handler
 }
 
 // DirectTester 是直连测试面（spec-1.17 directconn.Manager 满足）；接口化便于测试替身
@@ -93,6 +95,11 @@ func (s *Server) Handler() http.Handler {
 	handle("GET /api/v1/llm/quota", s.getLLMQuota)
 	handle("PUT /api/v1/llm/quota", s.putLLMQuota)
 	handle("GET /api/v1/llm/usage", s.llmUsage)
+
+	// 智能体会话（spec-1.8 D4）：一比一反代到 agent-runtime 内部 API（含 SSE）。
+	if s.agent != nil {
+		mux.Handle("/api/v1/agent/", s.agent)
+	}
 
 	return s.tenantMiddleware(mux)
 }
