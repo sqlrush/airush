@@ -38,4 +38,9 @@ ERROR_CODES: dict[str, dict[str, object]] = {
     "AR_TIMESERIES_QUERY_FAILED": {"level": "E4", "http": 500, "message": "服务内部错误", "deprecated": False},
     "AR_TIMESERIES_UNDECLARED_SERIES": {"level": "E4", "http": 500, "message": "服务内部错误", "deprecated": False},
     "AR_COLLECT_DATASOURCE_MISMATCH": {"level": "E2", "http": 403, "message": "上报的数据源不属于该连接器", "deprecated": False},
+    "AR_AGENT_THREAD_NOT_FOUND": {"level": "E3", "http": 404, "message": "会话线程不存在", "deprecated": False},
+    "AR_AGENT_THREAD_IN_USE": {"level": "E3", "http": 409, "message": "会话线程仍被子线程引用，无法删除", "deprecated": False},
+    "AR_AGENT_EVENT_UNKNOWN": {"level": "E4", "http": 500, "message": "服务内部错误", "deprecated": False},
+    "AR_AGENT_TURN_REJECTED": {"level": "E6", "http": 429, "message": "当前请求过多，请稍后再试", "deprecated": False},
+    "AR_AGENT_ACTION_NEEDS_APPROVAL": {"level": "E2", "http": 403, "message": "该操作需要审批", "deprecated": False},
 }

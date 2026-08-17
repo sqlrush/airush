@@ -88,6 +88,10 @@ spec:
                 secretKeyRef: { name: {{ $pkiSecret }}, key: ca.key }
             - name: AIRUSH_CONSOLE_GATEWAY_URL
               value: {{ printf "http://%s-gateway:8081" .Release.Name | quote }}
+            {{- if .Values.agentRuntime.enabled }}
+            - name: AIRUSH_CONSOLE_AGENT_RUNTIME_URL
+              value: {{ printf "http://%s-agent-runtime:8082" .Release.Name | quote }}
+            {{- end }}
             - name: AIRUSH_CONSOLE_METRICS_INTERVAL
               value: {{ .Values.console.metricsInterval | default "60s" | quote }}
             - name: AIRUSH_CONSOLE_SLOWLOG_INTERVAL

@@ -75,3 +75,14 @@ func (w *statusWriter) WriteHeader(code int) {
 	w.status = code
 	w.ResponseWriter.WriteHeader(code)
 }
+
+// Unwrap 暴露被包裹的 ResponseWriter，让 http.NewResponseController（Flush/Hijack/SetWriteDeadline）
+// 与 httputil.ReverseProxy 的流式刷写穿透本中间件（SSE 事件流依赖，spec-1.8）。
+func (w *statusWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+// Flush 直接实现 http.Flusher：老式 `w.(http.Flusher)` 断言的调用方也能刷。
+func (w *statusWriter) Flush() {
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}

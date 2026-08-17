@@ -41,6 +41,11 @@ const (
 	CodeTimeseriesQueryFailed Code = "AR_TIMESERIES_QUERY_FAILED"
 	CodeTimeseriesUndeclaredSeries Code = "AR_TIMESERIES_UNDECLARED_SERIES"
 	CodeCollectDatasourceMismatch Code = "AR_COLLECT_DATASOURCE_MISMATCH"
+	CodeAgentThreadNotFound Code = "AR_AGENT_THREAD_NOT_FOUND"
+	CodeAgentThreadInUse Code = "AR_AGENT_THREAD_IN_USE"
+	CodeAgentEventUnknown Code = "AR_AGENT_EVENT_UNKNOWN"
+	CodeAgentTurnRejected Code = "AR_AGENT_TURN_REJECTED"
+	CodeAgentActionNeedsApproval Code = "AR_AGENT_ACTION_NEEDS_APPROVAL"
 )
 
 var codeMeta = map[Code]Meta{
@@ -81,4 +86,9 @@ var codeMeta = map[Code]Meta{
 	CodeTimeseriesQueryFailed: {Level: "E4", HTTP: 500, Message: "服务内部错误", Deprecated: false},
 	CodeTimeseriesUndeclaredSeries: {Level: "E4", HTTP: 500, Message: "服务内部错误", Deprecated: false},
 	CodeCollectDatasourceMismatch: {Level: "E2", HTTP: 403, Message: "上报的数据源不属于该连接器", Deprecated: false},
+	CodeAgentThreadNotFound: {Level: "E3", HTTP: 404, Message: "会话线程不存在", Deprecated: false},
+	CodeAgentThreadInUse: {Level: "E3", HTTP: 409, Message: "会话线程仍被子线程引用，无法删除", Deprecated: false},
+	CodeAgentEventUnknown: {Level: "E4", HTTP: 500, Message: "服务内部错误", Deprecated: false},
+	CodeAgentTurnRejected: {Level: "E6", HTTP: 429, Message: "当前请求过多，请稍后再试", Deprecated: false},
+	CodeAgentActionNeedsApproval: {Level: "E2", HTTP: 403, Message: "该操作需要审批", Deprecated: false},
 }

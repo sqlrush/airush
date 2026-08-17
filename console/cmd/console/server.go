@@ -80,6 +80,9 @@ func buildHandler(cfg appConfig, store *repo.Store, sealer *credcrypto.Sealer, d
 		return nil, fmt.Errorf("init httpapi: %w", err)
 	}
 	api = api.WithCollected(ts)
+	if api, err = api.WithAgentRuntime(cfg.AgentRuntimeURL, cfg.SvcToken); err != nil {
+		return nil, fmt.Errorf("init agent proxy: %w", err)
+	}
 	ca, err := pki.Load([]byte(cfg.CACert), []byte(cfg.CAKey))
 	if err != nil {
 		return nil, fmt.Errorf("load connector CA: %w", err)
