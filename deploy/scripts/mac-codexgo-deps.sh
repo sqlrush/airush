@@ -8,14 +8,14 @@
 set -eu
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 cd /Users/sqlrush/codexgo
-PKGS="./internal/core ./internal/core/coretest ./internal/protocol/... ./internal/api ./internal/client/... ./internal/mcp/... \
- ./internal/multiagent/... ./internal/agentgraph ./internal/agentgraph/agentgraphtest ./internal/threadstore ./internal/rollout/... \
- ./internal/config/... ./internal/modelproviderinfo/... ./internal/modelsmanager/... ./internal/skills/... \
- ./internal/tools/... ./internal/msghistory/... ./internal/hooks/... ./internal/features/..."
+PKGS="./pkg/core ./pkg/core/coretest ./pkg/protocol/... ./pkg/api ./pkg/client/... ./pkg/mcp/... \
+ ./pkg/multiagent/... ./pkg/agentgraph ./pkg/agentgraph/agentgraphtest ./pkg/threadstore ./pkg/rollout/... \
+ ./pkg/config/... ./pkg/modelproviderinfo/... ./pkg/modelsmanager/... ./pkg/skills/... \
+ ./pkg/tools/... ./pkg/msghistory/... ./pkg/hooks/... ./pkg/features/..."
 # airush 已有（各 go.mod 直接或间接）+ 2026-08-16 user 批准的三项
 APPROVED="github.com/google/uuid|github.com/klauspost/compress|github.com/pelletier/go-toml/v2|github.com/rivo/uniseg|golang.org/x/sys|golang.org/x/text"
 echo "== 目标包引用的 codexgo 内部包（看有没有把'不要'的包拖进来）=="
-go list -deps ${=PKGS} 2>&1 | grep "^github.com/sqlrush/codexgo/internal/" | sed 's#github.com/sqlrush/codexgo/internal/##' | sort -u | tr '\n' ' '; echo
+go list -deps ${=PKGS} 2>&1 | grep "^github.com/sqlrush/codexgo/internal/" | sed "s#github.com/sqlrush/codexgo/##" | sort -u | tr '\n' ' '; echo
 echo "== 第三方模块（去 std/内部）=="
 go list -deps -f "{{if not .Standard}}{{if .Module}}{{.Module.Path}}{{end}}{{end}}" ${=PKGS} 2>&1 | grep -v "^github.com/sqlrush/codexgo$" | sort -u > /tmp/codexgo-third.txt
 wc -l < /tmp/codexgo-third.txt
