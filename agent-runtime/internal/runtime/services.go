@@ -95,8 +95,8 @@ func (e *Engine) newModelClient(threadID protocol.ThreadID, cfg core.SessionConf
 	if slug == "" {
 		slug = e.cfg.DefaultModel
 	}
-	info := modelsmanager.ModelInfoFromSlug(slug)
-	mc, err := core.NewResponsesModelClient(core.ModelClientConfig{
+	info := platformModelInfo(slug)
+	clientCfg := core.ModelClientConfig{
 		SessionID:      threadID.ToSessionID(),
 		ThreadID:       threadID,
 		InstallationID: e.cfg.PodName,
@@ -108,9 +108,17 @@ func (e *Engine) newModelClient(threadID protocol.ThreadID, cfg core.SessionConf
 		Auth:      api.NoOpAuth{},
 		Transport: client.NewHTTPClientTransport(&http.Client{Transport: quotaAwareTransport{next: e.cfg.LLMTransport}}),
 		ModelInfo: info,
-	})
+	}
+	if e.cfg.LLMWireAPI == WireAPIResponses {
+		mc, err := core.NewResponsesModelClient(clientCfg)
+		if err != nil {
+			return nil, fmt.Errorf("runtime: build responses model client for %s: %w", threadID, err)
+		}
+		return mc, nil
+	}
+	mc, err := core.NewChatModelClient(clientCfg)
 	if err != nil {
-		return nil, fmt.Errorf("runtime: build model client for %s: %w", threadID, err)
+		return nil, fmt.Errorf("runtime: build chat model client for %s: %w", threadID, err)
 	}
 	return mc, nil
 }
@@ -140,6 +148,14 @@ func (e *Engine) newToolRouter(threadID protocol.ThreadID) (core.ToolRouter, err
 	return router, nil
 }
 
+// platformModelInfo 按逻辑名派生模型元数据，并声明平台形态：纯文本输入（无文件系统与图片，
+// core 据此不广告 view_image）。托管 web_search 由 provider capabilities 关掉（见 New）。
+func platformModelInfo(slug string) modelsmanager.ModelInfo {
+	info := modelsmanager.ModelInfoFromSlug(slug)
+	info.InputModalities = []protocol.InputModality{protocol.InputModalityText}
+	return info
+}
+
 // staticModels 是 core.ModelsManager 的平台实现：模型元数据按逻辑名派生。
 type staticModels struct{ defaultSlug string }
 
@@ -147,7 +163,7 @@ func (m staticModels) ModelInfo(_ context.Context, slug string) (any, error) {
 	if slug == "" {
 		slug = m.defaultSlug
 	}
-	return modelsmanager.ModelInfoFromSlug(slug), nil
+	return platformModelInfo(slug), nil
 }
 
 func (m staticModels) DefaultModelSlug() string { return m.defaultSlug }

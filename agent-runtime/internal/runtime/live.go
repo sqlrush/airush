@@ -145,6 +145,7 @@ func (e *Engine) sessionConfig(info pgstore.ThreadInfo, agent *pgstore.AgentProf
 		// 扩展持久化：多出 error / 子 agent 生命周期 / dynamic tool 事件——平台事件流是审计与回放的 SSOT，
 		// 这些不该只留在进程内（上游 CLI 缺省 Limited）。
 		PersistExtendedHistory: true,
+		WebSearchMode:          protocol.WebSearchModeDisabled,
 		ApprovalPolicy:         protocol.AskForApproval{Kind: protocol.AskForApprovalNever},
 		SandboxMode:            protocol.SandboxModeReadOnly,
 		Cwd:                    "/",

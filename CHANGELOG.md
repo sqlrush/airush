@@ -29,6 +29,9 @@
     `X-Airush-Tenant`），console 公开面 `/api/v1/agent/*` 一比一反代（含 SSE）；Helm 组件
     `agentRuntime`（`terminationGracePeriodSeconds: 330`、PDB、/readyz 排水 503）；镜像构建按
     `deploy/codexgo.lock` 拉取 codexgo；CI 各 go job 前置 `codexgo-checkout.sh`；
+  - **线协议缺省 chat**（`AIRUSH_AGENT_LLM_WIRE_API`；Responses 可选）：Kimi K3 金丝雀实测 LiteLLM 的
+    Responses→chat 桥接在工具回合丢 tool_call_id（spec-1.7 Q3 备选 B）；网关 4xx / 配额拒绝在
+    runtime 侧合成同码响应，客户端不再当网络错误重试；不广告 view_image / 托管 web_search；
   - 新错误码 AR_AGENT_THREAD_NOT_FOUND / THREAD_IN_USE / EVENT_UNKNOWN / TURN_REJECTED /
     ACTION_NEEDS_APPROVAL；`agents.default_model` 列；`airush_agent_*` 指标（turns_total{status}、
     turn_duration_ms、turns_in_flight、approvals_total{status}）。

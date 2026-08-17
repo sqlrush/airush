@@ -32,6 +32,8 @@ type appConfig struct {
 	// LLM 网关（spec-1.7）：OpenAI 兼容根（…/v1）+ 网关 master key（Meter 注入 Authorization）
 	LLMURL string `env:"LLM_URL" default:""`
 	LLMKey string `env:"LLM_KEY" secret:"true"`
+	// 线协议：chat（缺省；LiteLLM 原生转发）| responses（LiteLLM 桥接；金丝雀实测工具回合丢 id，见 spec-1.8 §11）
+	LLMWireAPI string `env:"LLM_WIRE_API" default:"chat" oneof:"chat,responses"`
 	// 控制面内部 API（配额门与记账，libs/llm.ConsoleClient）+ 服务间 token（也是本进程内部 API 的口令）
 	ConsoleURL string `env:"CONSOLE_URL" default:""`
 	SvcToken   string `env:"SVC_TOKEN"   secret:"true"`
