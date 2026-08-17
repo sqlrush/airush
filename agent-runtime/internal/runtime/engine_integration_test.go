@@ -192,12 +192,13 @@ func (f *fakeLLM) serve(w http.ResponseWriter, r *http.Request) {
 
 // meterStubs：配额门恒放行；记账进内存（断言用）。
 type meterStubs struct {
-	mu      sync.Mutex
-	records []llm.Usage
-	tenants []string
+	mu       sync.Mutex
+	records  []llm.Usage
+	tenants  []string
+	checkErr error
 }
 
-func (m *meterStubs) Check(context.Context, string) error { return nil }
+func (m *meterStubs) Check(context.Context, string) error { return m.checkErr }
 func (m *meterStubs) Record(_ context.Context, tenantID string, u llm.Usage, _ string, _ string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

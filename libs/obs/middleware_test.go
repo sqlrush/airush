@@ -40,3 +40,23 @@ func TestHTTPMiddlewarePropagatesTraceparent(t *testing.T) {
 		t.Fatalf("status = %d", rec.Code)
 	}
 }
+
+// TestHTTPMiddlewarePreservesFlush：中间件不能吞掉 Flush（SSE 需要）——既支持
+// http.Flusher 断言，也支持 http.NewResponseController。
+func TestHTTPMiddlewarePreservesFlush(t *testing.T) {
+	flushed := 0
+	h := HTTPMiddleware("test", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if _, ok := w.(http.Flusher); !ok {
+			t.Fatal("wrapped writer must implement http.Flusher")
+		}
+		if err := http.NewResponseController(w).Flush(); err != nil {
+			t.Fatalf("response controller flush: %v", err)
+		}
+		flushed++
+	}))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/x", nil))
+	if flushed != 1 || !rec.Flushed {
+		t.Fatalf("flush not propagated: %d %v", flushed, rec.Flushed)
+	}
+}

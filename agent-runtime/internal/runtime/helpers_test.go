@@ -3,6 +3,10 @@ package runtime
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
+	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -116,3 +120,34 @@ func TestStaticModelsAndDenyReviewer(t *testing.T) {
 		t.Fatalf("deny reviewer = %+v", d)
 	}
 }
+
+func TestQuotaAwareTransport(t *testing.T) {
+	quota := quotaAwareTransport{next: rtFunc(func(*http.Request) (*http.Response, error) {
+		return nil, apierror.New(apierror.CodeQuotaExceeded)
+	})}
+	req, _ := http.NewRequest(http.MethodPost, "http://llm/v1/responses", nil)
+	resp, err := quota.RoundTrip(req)
+	if err != nil || resp.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("quota → 429, got %v %v", resp, err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), string(apierror.CodeQuotaExceeded)) {
+		t.Fatalf("body = %s", body)
+	}
+	other := quotaAwareTransport{next: rtFunc(func(*http.Request) (*http.Response, error) {
+		return nil, errors.New("boom")
+	})}
+	if _, err := other.RoundTrip(req); err == nil || err.Error() != "boom" {
+		t.Fatalf("other errors pass through: %v", err)
+	}
+	ok := quotaAwareTransport{next: rtFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(""))}, nil
+	})}
+	if resp, err := ok.RoundTrip(req); err != nil || resp.StatusCode != 200 {
+		t.Fatalf("success passes through: %v %v", resp, err)
+	}
+}
+
+type rtFunc func(*http.Request) (*http.Response, error)
+
+func (f rtFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }

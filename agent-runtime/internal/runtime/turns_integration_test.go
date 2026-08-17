@@ -441,3 +441,33 @@ func TestSubAgentSpawn(t *testing.T) {
 		t.Fatalf("parent events lack spawn end: %v", eventTypes(t, ctx, ref.ThreadID))
 	}
 }
+
+// TestQuotaExceededEndsTurn spec-1.8 T10：配额门拒绝 → 不打上游、不重试，turn 以 error 事件
+// （message 含 AR_QUOTA_EXCEEDED）结束，线程回 idle。
+func TestQuotaExceededEndsTurn(t *testing.T) {
+	ctx, _ := newTenant(t)
+	llmSrv := newFakeLLM(t)
+	e, stubs := newEngine(t, llmSrv, "pod-a")
+	stubs.checkErr = apierror.New(apierror.CodeQuotaExceeded)
+	ref, _ := e.StartThread(ctx, StartThreadInput{})
+	if _, err := e.SubmitTurn(ctx, ref.ThreadID, textInput("超额了")); err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	waitStatus(t, ctx, ref.ThreadID, pgstore.ThreadStatusIdle, 10*time.Second)
+	if llmSrv.Requests.Load() != 0 {
+		t.Fatalf("upstream must not be called when quota is exceeded: %d", llmSrv.Requests.Load())
+	}
+	evs, _ := testStore.ReadEvents(ctx, protocol.NewThreadID(ref.ThreadID), 0, 0)
+	found := false
+	for _, ev := range evs {
+		if ev.EventType == "error" && strings.Contains(string(ev.Payload), string(apierror.CodeQuotaExceeded)) {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("no error event carrying AR_QUOTA_EXCEEDED: %v", eventTypes(t, ctx, ref.ThreadID))
+	}
+	if !contains(eventTypes(t, ctx, ref.ThreadID), "task_complete") {
+		t.Fatalf("turn did not end: %v", eventTypes(t, ctx, ref.ThreadID))
+	}
+}

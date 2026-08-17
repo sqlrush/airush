@@ -16,6 +16,7 @@ import (
 
 	"github.com/sqlrush/airush/agent-runtime/internal/runtime"
 	"github.com/sqlrush/airush/libs/apierror"
+	"github.com/sqlrush/airush/libs/obs"
 	"github.com/sqlrush/airush/libs/tenancy"
 )
 
@@ -222,5 +223,24 @@ func TestMapErr(t *testing.T) {
 	orig := apierror.New(apierror.CodeQuotaExceeded)
 	if !errors.Is(mapErr(orig), orig) {
 		t.Fatal("apierror passthrough")
+	}
+}
+
+// TestEventsSSEThroughObsMiddleware：SSE 经 libs/obs HTTP 中间件包裹后仍能刷写（kind 实测曾 500）。
+func TestEventsSSEThroughObsMiddleware(t *testing.T) {
+	core := &fakeCore{events: []runtime.Event{{Seq: 1, Type: "session_meta", Payload: json.RawMessage(`{}`)}}}
+	srv := httptest.NewServer(obs.HTTPMiddleware("test", New(core, nil, "tok").Handler()))
+	defer srv.Close()
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/internal/v1/agent/threads/"+threadX+"/events", nil)
+	req.Header.Set("Authorization", "Bearer tok")
+	req.Header.Set(HeaderTenant, tenantA)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("sse: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 || !strings.Contains(string(body), "event: session_meta") {
+		t.Fatalf("sse via middleware = %d %s", resp.StatusCode, body)
 	}
 }

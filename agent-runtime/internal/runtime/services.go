@@ -106,7 +106,7 @@ func (e *Engine) newModelClient(threadID protocol.ThreadID, cfg core.SessionConf
 			Retry: api.DefaultRetryConfig(), StreamIdleTimeout: streamIdleTimeout,
 		},
 		Auth:      api.NoOpAuth{},
-		Transport: client.NewHTTPClientTransport(&http.Client{Transport: e.cfg.LLMTransport}),
+		Transport: client.NewHTTPClientTransport(&http.Client{Transport: quotaAwareTransport{next: e.cfg.LLMTransport}}),
 		ModelInfo: info,
 	})
 	if err != nil {

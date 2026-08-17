@@ -32,21 +32,22 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		return apierror.New(apierror.CodeInternalError)
-	}
 	ch, err := s.core.Events(r.Context(), id, from)
 	if err != nil {
 		return mapErr(err)
 	}
+	// ResponseController 穿透中间件包裹（Unwrap）；不支持 Flush 的 writer 才是真错误。
+	rc := http.NewResponseController(w)
+	flush := func() error { return rc.Flush() }
 	h := w.Header()
 	h.Set("Content-Type", "text/event-stream")
 	h.Set("Cache-Control", "no-cache")
 	h.Set("Connection", "keep-alive")
 	h.Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
-	flusher.Flush()
+	if err := flush(); err != nil {
+		return apierror.Wrap(apierror.CodeInternalError, err)
+	}
 
 	keepalive := time.NewTicker(sseKeepalive)
 	defer keepalive.Stop()
@@ -58,7 +59,7 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) error {
 			if _, err := fmt.Fprint(w, ": keepalive\n\n"); err != nil {
 				return nil
 			}
-			flusher.Flush()
+			_ = flush()
 		case ev, ok := <-ch:
 			if !ok {
 				return nil
@@ -70,7 +71,7 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) error {
 			if _, err := fmt.Fprintf(w, "id: %d\nevent: %s\ndata: %s\n\n", ev.Seq, ev.Type, data); err != nil {
 				return nil
 			}
-			flusher.Flush()
+			_ = flush()
 		}
 	}
 }
