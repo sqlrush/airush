@@ -19,8 +19,13 @@ TOOL_ENV ?=
 # 覆盖率阻断开关（spec-0.4 Q2）：make cover COVER_ENFORCE=1 生效，spec-1.1 起 CI 默认开
 export COVER_ENFORCE
 
-.PHONY: build build-go build-py build-fe test test-go test-py lint fmt clean doctor \
+.PHONY: build build-go build-py build-fe test test-go test-py lint fmt clean doctor codexgo-checkout \
         $(GO_MODULES:%=%/build) $(GO_MODULES:%=%/test)
+
+## codexgo-checkout: 把 codexgo 抽核分支按 deploy/codexgo.lock 钉住的 commit 放到 ../codexgo
+## （agent-runtime 经 go.mod replace 消费，spec-1.8 §8 Q1/Q7；CI 各 go job 前置调用；本地已有则只校验）
+codexgo-checkout:
+	@deploy/scripts/codexgo-checkout.sh
 
 ## build: 构建全部组件（Go 编译 + Python 同步检查 + 前端 build）
 build: build-go build-py build-fe
