@@ -353,10 +353,11 @@ kill $PF 2>/dev/null
 n=$("${KCTL[@]}" exec airush-pg-0 -- psql -U postgres -d airush -tAc \
   "SELECT count(*) FROM agent_rollout_events WHERE thread_id = '$tid'" 2>/dev/null | tr -d '[:space:]')
 [ "${n:-0}" -ge 5 ] || fail "agent_rollout_events 里该线程事件数异常: ${n:-0}"
-# 排水：滚动重启应在宽限期内优雅完成（无在飞 turn → 立即），新 pod 就绪
-"${KCTL[@]}" rollout restart deploy/airush-agent-runtime >/dev/null
-"${KCTL[@]}" rollout status deploy/airush-agent-runtime --timeout=180s >/dev/null || fail "agent-runtime 滚动重启未就绪（排水卡住？）"
-echo "  agent-runtime OK（线程/turn/SSE/idle/items/记账/PG 事件 ${n} 条/滚动重启）"
+# 排水（T23 的 dev 形态）：删 pod → SIGTERM 排水（无在飞 turn → 立即）→ 新 pod 就绪。
+# 不用 rollout restart：它会往 pod 模板加 restartedAt 注解，后面的 helm 幂等断言会因模板回滚而重建 pod。
+"${KCTL[@]}" delete pod -l app.kubernetes.io/name=agent-runtime --wait=false >/dev/null 2>&1 || true
+"${KCTL[@]}" rollout status deploy/airush-agent-runtime --timeout=180s >/dev/null || fail "agent-runtime 删 pod 后未重新就绪（排水卡住？）"
+echo "  agent-runtime OK（线程/turn/SSE/idle/items/记账/PG 事件 ${n} 条/删 pod 排水重建）"
 
 echo "== helm 幂等（再次 upgrade 应零变更零重启） =="
 before=$("${KCTL[@]}" get pods -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | sort)
