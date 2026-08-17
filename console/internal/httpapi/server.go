@@ -96,11 +96,7 @@ func (s *Server) Handler() http.Handler {
 	handle("PUT /api/v1/llm/quota", s.putLLMQuota)
 	handle("GET /api/v1/llm/usage", s.llmUsage)
 
-	// 智能体会话（spec-1.8 D4）：一比一反代到 agent-runtime 内部 API（含 SSE）。
-	if s.agent != nil {
-		mux.Handle("/api/v1/agent/", s.agent)
-	}
-
+	s.mountAgent(mux)
 	return s.tenantMiddleware(mux)
 }
 

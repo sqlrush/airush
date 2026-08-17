@@ -34,7 +34,7 @@ type appConfig struct {
 	DirectIdleTTL        time.Duration `env:"DIRECT_IDLE_TTL"        default:"10m"`
 	DirectConnectTimeout time.Duration `env:"DIRECT_CONNECT_TIMEOUT" default:"8s"`
 	// spec-1.3：指标采集调度。GatewayURL 为空则只跑 Direct 通道（Connector 数据源跳过）。
-	GatewayURL      string        `env:"GATEWAY_URL"      default:""`
+	GatewayURL string `env:"GATEWAY_URL"      default:""`
 	// spec-1.8：agent-runtime 内部 API 根（空 = 不挂 /api/v1/agent/*）。
 	AgentRuntimeURL string        `env:"AGENT_RUNTIME_URL" default:""`
 	MetricsInterval time.Duration `env:"METRICS_INTERVAL" default:"60s"`

@@ -345,3 +345,43 @@ func waitFor(t *testing.T, d time.Duration, cond func() bool) {
 	}
 	t.Fatalf("condition not met within %s", d)
 }
+
+// TestInterruptAcrossPods：线程被别的 pod 持有时 Interrupt 入队（steer 载荷 interrupt），持有方
+// 领取时执行；空闲线程 Interrupt 无操作；未知线程 404。
+func TestInterruptAcrossPods(t *testing.T) {
+	ctx, _ := newTenant(t)
+	llmSrv := newFakeLLM(t)
+	podA, _ := newEngine(t, llmSrv, "pod-a")
+	podB, _ := newEngine(t, llmSrv, "pod-b")
+	ref, _ := podA.StartThread(ctx, StartThreadInput{})
+	tid := protocol.NewThreadID(ref.ThreadID)
+	if err := podB.Interrupt(ctx, ref.ThreadID); err != nil {
+		t.Fatalf("interrupt idle: %v", err)
+	}
+	if pending, _ := testStore.PendingInputs(ctx, tid); len(pending) != 0 {
+		t.Fatalf("idle interrupt must not enqueue: %+v", pending)
+	}
+	if err := podB.Interrupt(ctx, protocol.NewThreadIDV7().String()); !isCode(err, apierror.CodeAgentThreadNotFound) {
+		t.Fatalf("unknown thread: %v", err)
+	}
+	// 模拟 pod-a 持有中：直接 Claim（不起会话）
+	if ok, _ := testStore.ClaimTurn(ctx, tid, "pod-a"); !ok {
+		t.Fatal("claim")
+	}
+	if err := podB.Interrupt(ctx, ref.ThreadID); err != nil {
+		t.Fatalf("interrupt held elsewhere: %v", err)
+	}
+	pending, _ := testStore.PendingInputs(ctx, tid)
+	if len(pending) != 1 || pending[0].Kind != pgstore.QueueKindSteer || !strings.Contains(string(pending[0].Payload), queuedInterrupt) {
+		t.Fatalf("interrupt not queued: %+v", pending)
+	}
+	_ = testStore.ReleaseTurn(ctx, tid, pgstore.ThreadStatusIdle)
+	// 下一次派发时消费掉中断（无 turn 可中断 → 仅出队），再跑一轮正常
+	if _, err := podA.SubmitTurn(ctx, ref.ThreadID, textInput("正常")); err != nil {
+		t.Fatalf("turn: %v", err)
+	}
+	waitStatus(t, ctx, ref.ThreadID, pgstore.ThreadStatusIdle, 10*time.Second)
+	if pending, _ := testStore.PendingInputs(ctx, tid); len(pending) != 0 {
+		t.Fatalf("queue not drained: %+v", pending)
+	}
+}

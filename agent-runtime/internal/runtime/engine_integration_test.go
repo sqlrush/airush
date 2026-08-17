@@ -174,8 +174,8 @@ func (f *fakeLLM) serve(w http.ResponseWriter, r *http.Request) {
 		content, _ := json.Marshal(text)
 		item = fmt.Sprintf(`{"type":"message","role":"assistant","content":[{"type":"output_text","text":%s}]}`, content)
 	}
-	fmt.Fprintf(w, "event: response.output_item.done\ndata: {\"type\":\"response.output_item.done\",\"item\":%s}\n\n", item)
-	fmt.Fprintf(w, "event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp-%d\",\"usage\":{\"input_tokens\":11,\"output_tokens\":3,\"total_tokens\":14}}}\n\n", n)
+	_, _ = fmt.Fprintf(w, "event: response.output_item.done\ndata: {\"type\":\"response.output_item.done\",\"item\":%s}\n\n", item)
+	_, _ = fmt.Fprintf(w, "event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp-%d\",\"usage\":{\"input_tokens\":11,\"output_tokens\":3,\"total_tokens\":14}}}\n\n", n)
 	if fl != nil {
 		fl.Flush()
 	}
@@ -196,6 +196,7 @@ func (m *meterStubs) Record(_ context.Context, tenantID string, u llm.Usage, _ s
 	m.tenants = append(m.tenants, tenantID)
 	return nil
 }
+
 func (m *meterStubs) count() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()

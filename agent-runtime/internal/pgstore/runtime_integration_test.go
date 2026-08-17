@@ -176,6 +176,12 @@ func TestInputQueue(t *testing.T) {
 	if err := testStore.EnqueueInput(ctx, contracttest.ThreadID(998), q1, QueueKindSteer, payload); !isThreadNotFound(err) {
 		t.Fatalf("enqueue unknown thread: %v", err)
 	}
+	if err := testStore.DeleteInput(ctx, q2); err != nil {
+		t.Fatalf("delete input: %v", err)
+	}
+	if pending, _ = testStore.PendingInputs(ctx, id); len(pending) != 0 {
+		t.Fatalf("pending after delete input = %+v", pending)
+	}
 	// 删除线程级联清队列
 	if err := testStore.Threads().DeleteThread(ctx, threadstore.DeleteThreadParams{ThreadID: id}); err != nil {
 		t.Fatalf("delete: %v", err)

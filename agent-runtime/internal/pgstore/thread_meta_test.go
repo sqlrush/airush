@@ -125,3 +125,39 @@ func TestStoredThreadProjectionDefaults(t *testing.T) {
 		t.Fatalf("meta precedence = %+v", st)
 	}
 }
+
+func TestApplyPatchAgentAndRuntimeFields(t *testing.T) {
+	src := rollout.NewCliSource()
+	ts := rollout.ThreadSource("subagent_review")
+	am := threadstore.OnRequestApproval()
+	pp := threadstore.ReadOnlyPermissionProfile()
+	tu := protocol.TokenUsage{TotalTokens: 5}
+	mm := protocol.ThreadMemoryMode("disabled")
+	out := threadMeta{}.applyPatch(threadstore.ThreadMetadataPatch{
+		Source:            &src,
+		ThreadSource:      threadstore.SetClearable(ts),
+		AgentNickname:     threadstore.SetClearable("nick"),
+		AgentRole:         threadstore.SetClearable("role"),
+		AgentPath:         threadstore.SetClearable("a/b"),
+		Cwd:               strp("/w"),
+		CliVersion:        strp("v1"),
+		ApprovalMode:      &am,
+		PermissionProfile: &pp,
+		TokenUsage:        &tu,
+		MemoryMode:        &mm,
+		ModelProvider:     strp("prov2"),
+	})
+	if out.Source == nil || out.ThreadSource == nil || *out.ThreadSource != ts || out.AgentNickname == nil || *out.AgentNickname != "nick" ||
+		out.AgentRole == nil || out.AgentPath == nil || out.Cwd != "/w" || out.CliVersion != "v1" || out.ApprovalMode == nil ||
+		out.PermissionProfile == nil || out.TokenUsage == nil || out.TokenUsage.TotalTokens != 5 || out.MemoryMode == nil || out.ModelProvider != "prov2" {
+		t.Fatalf("applied = %+v", out)
+	}
+	cleared := out.applyPatch(threadstore.ThreadMetadataPatch{ThreadSource: threadstore.ClearField[rollout.ThreadSource](), AgentNickname: threadstore.ClearField[string]()})
+	if cleared.ThreadSource != nil || cleared.AgentNickname != nil || cleared.AgentRole == nil {
+		t.Fatalf("cleared = %+v", cleared)
+	}
+	st := threadRow{ID: contracttest.ThreadID(3).String(), Meta: cleared}.storedThread()
+	if st.ApprovalMode != am || st.Source.Kind != src.Kind || st.TokenUsage == nil {
+		t.Fatalf("projection = %+v", st)
+	}
+}

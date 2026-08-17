@@ -77,12 +77,6 @@ func (l *liveThread) endTurn() {
 	l.idleCh = make(chan struct{})
 }
 
-func (l *liveThread) idleWaiter() <-chan struct{} {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.idleCh
-}
-
 // startLive 领取后启动线程会话：last_seq==0 → 全新 spawn（写 session_meta），否则按 store 历史
 // resume（0.147 ReadThread+IncludeHistory → 回放）。会话 ctx 由 tenantctx.Session 派生（不随请求取消）。
 func (e *Engine) startLive(reqCtx context.Context, info pgstore.ThreadInfo, agent *pgstore.AgentProfile, holdsSlot bool) (*liveThread, error) {

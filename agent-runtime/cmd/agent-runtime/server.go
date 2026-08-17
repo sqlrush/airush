@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -39,15 +40,43 @@ func runServer(cfg appConfig, provider *obs.Provider, version string) error {
 	}
 
 	mcpManager := startMCP(ctx, cfg, logger)
-	var mcpGateway runtime.MCPGateway
 	if mcpManager != nil {
 		defer mcpManager.Shutdown()
+	}
+	engine, err := buildEngine(ctx, cfg, store, mcpManager, logger)
+	if err != nil {
+		return err
+	}
+	sweepCtx, stopSweep := context.WithCancel(ctx)
+	defer stopSweep()
+	go scheduler.NewSweeper(store, engine, 0, logger).Run(sweepCtx)
+
+	srv := &http.Server{
+		Addr:              cfg.Listen,
+		Handler:           obs.HTTPMiddleware(component, buildMux(cfg, engine, version)),
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+	errCh := make(chan error, 1)
+	go func() { errCh <- srv.ListenAndServe() }()
+	logger.Info("agent-runtime serving", "listen", cfg.Listen, "pod", podName(), "mcp_tools", mcpToolCount(mcpManager))
+
+	select {
+	case err := <-errCh:
+		return fmt.Errorf("serve: %w", err)
+	case <-ctx.Done():
+	}
+	stopSweep()
+	return drainAndStop(cfg, engine, srv, provider)
+}
+
+// buildEngine 装配 Meter + Engine + 租户并发上限，并跑一次启动期恢复扫描。
+func buildEngine(ctx context.Context, cfg appConfig, store *pgstore.Store, mcpManager *mcp.Manager, logger *slog.Logger) (*runtime.Engine, error) {
+	var mcpGateway runtime.MCPGateway
+	if mcpManager != nil {
 		mcpGateway = mcpManager
 	}
-
 	console := llm.NewConsoleClient(cfg.ConsoleURL, cfg.SvcToken)
 	meter := llm.NewMeter(nil, console, console, llm.WithMasterKey(cfg.LLMKey), llm.WithLogger(logger))
-
 	engine, err := runtime.New(runtime.Config{
 		Store:        store,
 		DefaultModel: cfg.DefaultModel,
@@ -58,25 +87,26 @@ func runServer(cfg appConfig, provider *obs.Provider, version string) error {
 		Logger:       logger,
 	})
 	if err != nil {
-		return fmt.Errorf("build engine: %w", err)
+		return nil, fmt.Errorf("build engine: %w", err)
 	}
 	engine.SetLimiter(scheduler.NewTenantLimiter(cfg.MaxConcurrentTurns))
-	if n, err := engine.Recover(ctx); err != nil {
-		return fmt.Errorf("recover orphan threads: %w", err)
-	} else if n > 0 {
+	n, err := engine.Recover(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("recover orphan threads: %w", err)
+	}
+	if n > 0 {
 		logger.Info("recovered orphan threads", "count", n)
 	}
+	return engine, nil
+}
 
-	sweepCtx, stopSweep := context.WithCancel(ctx)
-	defer stopSweep()
-	go scheduler.NewSweeper(store, engine, 0, logger).Run(sweepCtx)
-
+// buildMux 组装路由：healthz / readyz（排水期间 503，Service 摘流量的双保险）/ 内部 API。
+func buildMux(cfg appConfig, engine *runtime.Engine, version string) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = fmt.Fprintf(w, "ok %s %s\n", component, version)
 	})
-	// readyz 在排水期间返回 503：Service 摘除本 pod（k8s 也会因 terminating 摘除，双保险）。
 	mux.HandleFunc("/readyz", func(w http.ResponseWriter, _ *http.Request) {
 		if engine.Draining() {
 			w.WriteHeader(http.StatusServiceUnavailable)
@@ -87,26 +117,13 @@ func runServer(cfg appConfig, provider *obs.Provider, version string) error {
 		_, _ = fmt.Fprintln(w, "ready")
 	})
 	mux.Handle("/internal/v1/agent/", api.New(engine, engine, cfg.SvcToken).Handler())
+	return mux
+}
 
-	srv := &http.Server{
-		Addr:              cfg.Listen,
-		Handler:           obs.HTTPMiddleware(component, mux),
-		ReadHeaderTimeout: 5 * time.Second,
-	}
-	errCh := make(chan error, 1)
-	go func() { errCh <- srv.ListenAndServe() }()
-	logger.Info("agent-runtime serving", "listen", cfg.Listen, "pod", podName(), "mcp_servers", mcpServerCount(mcpManager))
-
-	select {
-	case err := <-errCh:
-		return fmt.Errorf("serve: %w", err)
-	case <-ctx.Done():
-	}
-
-	// 排水（D5）：停领取 → 等在飞 turn → 超时中断标 interrupted。
+// drainAndStop 是 SIGTERM 之后的收尾：排水（D5）→ 关 HTTP → 关观测。
+func drainAndStop(cfg appConfig, engine *runtime.Engine, srv *http.Server, provider *obs.Provider) error {
 	drainCtx, cancelDrain := context.WithTimeout(context.Background(), cfg.DrainTimeout+10*time.Second)
 	defer cancelDrain()
-	stopSweep()
 	engine.Drain(drainCtx, cfg.DrainTimeout)
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -115,7 +132,7 @@ func runServer(cfg appConfig, provider *obs.Provider, version string) error {
 		return fmt.Errorf("graceful shutdown: %w", err)
 	}
 	provider.Shutdown(shutdownCtx)
-	logger.Info("agent-runtime stopped")
+	provider.Logger.Info("agent-runtime stopped")
 	return nil
 }
 
@@ -144,7 +161,7 @@ func parseMCPEndpoints(raw string) (map[string]config.McpServerConfig, error) {
 		}
 		name, url, ok := strings.Cut(part, "=")
 		name, url = strings.TrimSpace(name), strings.TrimSpace(url)
-		if !ok || name == "" || !(strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://")) {
+		if !ok || name == "" || (!strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://")) {
 			return nil, fmt.Errorf("AIRUSH_AGENT_MCP_ENDPOINTS 项 %q 不是 name=http(s)://url", part)
 		}
 		if _, dup := out[name]; dup {
@@ -160,10 +177,7 @@ func parseMCPEndpoints(raw string) (map[string]config.McpServerConfig, error) {
 
 // startMCP 启动静态 MCP endpoints（无 → nil）。单个 server 起不来只告警：skill 不可用不该
 // 让整个运行时起不来（对话仍可进行）。
-func startMCP(ctx context.Context, cfg appConfig, logger interface {
-	Warn(string, ...any)
-	Info(string, ...any)
-}) *mcp.Manager {
+func startMCP(ctx context.Context, cfg appConfig, logger *slog.Logger) *mcp.Manager {
 	servers, _ := parseMCPEndpoints(cfg.MCPEndpoints)
 	if len(servers) == 0 {
 		return nil
@@ -183,7 +197,7 @@ func startMCP(ctx context.Context, cfg appConfig, logger interface {
 	return mgr
 }
 
-func mcpServerCount(m *mcp.Manager) int {
+func mcpToolCount(m *mcp.Manager) int {
 	if m == nil {
 		return 0
 	}

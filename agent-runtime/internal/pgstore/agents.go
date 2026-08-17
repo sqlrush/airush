@@ -63,7 +63,7 @@ func (s *Store) ThreadsWithPendingInputs(ctx context.Context) ([]PendingThread, 
 
 func (s *Store) pendingThreadsForTenant(ctx context.Context, tenantID string) ([]PendingThread, error) {
 	var out []PendingThread
-	err := s.InTenantTx(tenantCtx(ctx, tenantID), func(ctx context.Context, tx pgx.Tx) error {
+	err := s.InTenantTx(withTenant(ctx, tenantID), func(ctx context.Context, tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, `SELECT DISTINCT q.thread_id FROM agent_thread_queue q
 			JOIN agent_threads t ON t.tenant_id = q.tenant_id AND t.id = q.thread_id
 			WHERE q.admitted_turn_id IS NULL AND t.status <> 'deleted' ORDER BY q.thread_id`)

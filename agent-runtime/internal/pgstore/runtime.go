@@ -139,7 +139,7 @@ func (s *Store) MarkStaleRunningInterrupted(ctx context.Context, staleAfter time
 	}
 	var out []StaleRunningThread
 	for _, tenantID := range tenants {
-		hits, err := s.markStaleForTenant(tenantCtx(ctx, tenantID), staleAfter)
+		hits, err := s.markStaleForTenant(withTenant(ctx, tenantID), staleAfter)
 		if err != nil {
 			return nil, err
 		}
@@ -148,8 +148,8 @@ func (s *Store) MarkStaleRunningInterrupted(ctx context.Context, staleAfter time
 	return out, nil
 }
 
-// tenantCtx 给跨租户扫描的每一步派生租户 ctx（不含请求级取消以外的东西）。
-func tenantCtx(ctx context.Context, tenantID string) context.Context {
+// withTenant 给跨租户扫描的每一步派生租户 ctx（不含请求级取消以外的东西）。
+func withTenant(ctx context.Context, tenantID string) context.Context {
 	return tenancy.WithTenant(ctx, tenantID)
 }
 

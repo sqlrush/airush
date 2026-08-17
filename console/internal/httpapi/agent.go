@@ -62,3 +62,10 @@ func (s *Server) WithAgentRuntime(baseURL, svcToken string) (*Server, error) {
 	s.agent = p
 	return s, nil
 }
+
+// mountAgent 把智能体会话反代挂到公开面（spec-1.8 D4）；未配置 runtime 时不挂。
+func (s *Server) mountAgent(mux *http.ServeMux) {
+	if s.agent != nil {
+		mux.Handle("/api/v1/agent/", s.agent)
+	}
+}
