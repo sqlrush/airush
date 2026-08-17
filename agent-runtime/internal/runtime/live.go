@@ -130,9 +130,12 @@ func (e *Engine) sessionConfig(info pgstore.ThreadInfo, agent *pgstore.AgentProf
 	cfg := core.SessionConfiguration{
 		ProviderID:       providerName,
 		BaseInstructions: baseInstructions,
-		ApprovalPolicy:   protocol.AskForApproval{Kind: protocol.AskForApprovalNever},
-		SandboxMode:      protocol.SandboxModeReadOnly,
-		Cwd:              "/",
+		// 扩展持久化：多出 error / 子 agent 生命周期 / dynamic tool 事件——平台事件流是审计与回放的 SSOT，
+		// 这些不该只留在进程内（上游 CLI 缺省 Limited）。
+		PersistExtendedHistory: true,
+		ApprovalPolicy:         protocol.AskForApproval{Kind: protocol.AskForApprovalNever},
+		SandboxMode:            protocol.SandboxModeReadOnly,
+		Cwd:                    "/",
 		CollaborationMode: protocol.CollaborationMode{
 			Mode:     protocol.ModeKindDefault,
 			Settings: protocol.Settings{Model: model},
@@ -217,6 +220,7 @@ func (e *Engine) release(lt *liveThread, to pgstore.ThreadStatus) {
 			delete(e.live, lt.id.String())
 		}
 		e.mu.Unlock()
+		e.releaseChildren(lt.ctx, lt.id)
 		if err := e.store.ReleaseTurn(lt.ctx, lt.id, to); err != nil {
 			obs.LoggerFrom(lt.ctx).Warn("release turn failed", "error", err)
 		}
@@ -230,4 +234,42 @@ func (e *Engine) release(lt *liveThread, to pgstore.ThreadStatus) {
 		close(lt.released)
 		e.notifier.Notify(lt.id.String())
 	})
+}
+
+// pumpChild 排空 core 直接 spawn 的子 agent 会话的事件队列（子线程没有 liveThread；事件已由
+// recorder 落库，这里只防队列打满阻塞子 turn），并在父线程释放时随之关闭（见 releaseChildren）。
+func (e *Engine) pumpChild(threadID protocol.ThreadID) {
+	var thread *core.CodexThread
+	// spawn 后 ThreadManager 才注册线程：短暂轮询拿句柄。
+	for i := 0; i < 50 && thread == nil; i++ {
+		if t, err := e.tm.GetThread(threadID); err == nil {
+			thread = t
+		} else {
+			time.Sleep(20 * time.Millisecond)
+		}
+	}
+	if thread == nil {
+		return
+	}
+	for {
+		if _, err := thread.NextEvent(context.Background()); err != nil {
+			return
+		}
+	}
+}
+
+// releaseChildren 关闭父线程释放时仍活着的子 agent 会话（按 PG 图的后代表，best effort）：
+// 子 agent 的生命周期属于父的 turn，父释放后留着只是泄漏。
+func (e *Engine) releaseChildren(ctx context.Context, parent protocol.ThreadID) {
+	descendants, err := e.store.Graph().ListThreadSpawnDescendants(ctx, parent, nil)
+	if err != nil {
+		return
+	}
+	for _, id := range descendants {
+		if t := e.tm.RemoveThread(id); t != nil {
+			shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			_ = t.ShutdownAndWait(shutdownCtx)
+			cancel()
+		}
+	}
 }

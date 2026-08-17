@@ -315,6 +315,49 @@ kill $PF 2>/dev/null
 echo "$u" | grep -q '"items"' || fail "usage 响应形态异常: ${u}"
 echo "  LLM 配额面 OK（seed 行在 / PUT→GET 回读 / usage 聚合可达）"
 
+echo "== agent-runtime（spec-1.8：pod 起 → 经 console 建线程发一轮 → SSE 收到 task_complete → 事件落 PG → Meter 记账 → 排水重启） =="
+"${KCTL[@]}" rollout status deploy/airush-agent-runtime --timeout=180s >/dev/null || fail "airush-agent-runtime 未就绪"
+"${KCTL[@]}" port-forward svc/airush-console 18080:8080 >/dev/null 2>&1 &
+PF=$!
+sleep 2
+usage_before=$(curl -sf "http://localhost:18080/api/v1/llm/quota" | grep -o '"used_this_month":[0-9]*' | cut -d: -f2)
+code=$(curl -s -o /tmp/airush-agent-thread.json -w '%{http_code}' -X POST http://localhost:18080/api/v1/agent/threads \
+  -H 'Content-Type: application/json' -d '{"title":"dev-verify"}')
+[ "$code" = "201" ] || { kill $PF; fail "建线程失败 http=$code $(cat /tmp/airush-agent-thread.json)"; }
+tid=$(grep -o '"thread_id":"[^"]*"' /tmp/airush-agent-thread.json | cut -d'"' -f4)
+[ -n "$tid" ] || { kill $PF; fail "未取到 thread_id"; }
+code=$(curl -s -o /tmp/airush-agent-turn.json -w '%{http_code}' -X POST "http://localhost:18080/api/v1/agent/threads/$tid/turns" \
+  -H 'Content-Type: application/json' -d '{"input":[{"type":"text","text":"你好，做个自我介绍"}]}')
+[ "$code" = "200" ] || [ "$code" = "202" ] || { kill $PF; fail "发 turn 失败 http=$code $(cat /tmp/airush-agent-turn.json)"; }
+# SSE：回放 + 实时，最多等 30s 收到 task_complete
+curl -sN --max-time 30 "http://localhost:18080/api/v1/agent/threads/$tid/events?from_seq=1" > /tmp/airush-agent-sse.txt 2>/dev/null &
+SSEPID=$!
+for i in $(seq 1 30); do
+  grep -q "event: task_complete" /tmp/airush-agent-sse.txt 2>/dev/null && break
+  sleep 1
+done
+kill $SSEPID 2>/dev/null
+grep -q "event: session_meta" /tmp/airush-agent-sse.txt || { kill $PF; fail "SSE 未回放 session_meta: $(head -c 400 /tmp/airush-agent-sse.txt)"; }
+grep -q "event: task_complete" /tmp/airush-agent-sse.txt || { kill $PF; fail "30s 内未收到 task_complete（LLM 网关→mock 这一跳？）: $(tail -c 600 /tmp/airush-agent-sse.txt)"; }
+grep -q "mock reply" /tmp/airush-agent-sse.txt || { kill $PF; fail "SSE 里没有 mock 供应商的回复"; }
+# 历史分页面可读，且线程回 idle
+th=$(curl -sf "http://localhost:18080/api/v1/agent/threads/$tid") || { kill $PF; fail "GET thread 不可达"; }
+echo "$th" | grep -q '"status":"idle"' || { kill $PF; fail "turn 结束后线程未回 idle: $th"; }
+items=$(curl -sf "http://localhost:18080/api/v1/agent/threads/$tid/items?limit=20") || { kill $PF; fail "GET items 不可达"; }
+echo "$items" | grep -q 'mock reply' || { kill $PF; fail "items 里没有助手回复: $(echo "$items" | head -c 300)"; }
+# Meter 记账：用量应增长
+usage_after=$(curl -sf "http://localhost:18080/api/v1/llm/quota" | grep -o '"used_this_month":[0-9]*' | cut -d: -f2)
+kill $PF 2>/dev/null
+[ "${usage_after:-0}" -gt "${usage_before:-0}" ] || fail "LLM 用量未增长（before=${usage_before:-0} after=${usage_after:-0}）——Meter 记账这一跳断了"
+# 事件真的在 PG（RLS 表；用超级用户点数）
+n=$("${KCTL[@]}" exec airush-pg-0 -- psql -U postgres -d airush -tAc \
+  "SELECT count(*) FROM agent_rollout_events WHERE thread_id = '$tid'" 2>/dev/null | tr -d '[:space:]')
+[ "${n:-0}" -ge 5 ] || fail "agent_rollout_events 里该线程事件数异常: ${n:-0}"
+# 排水：滚动重启应在宽限期内优雅完成（无在飞 turn → 立即），新 pod 就绪
+"${KCTL[@]}" rollout restart deploy/airush-agent-runtime >/dev/null
+"${KCTL[@]}" rollout status deploy/airush-agent-runtime --timeout=180s >/dev/null || fail "agent-runtime 滚动重启未就绪（排水卡住？）"
+echo "  agent-runtime OK（线程/turn/SSE/idle/items/记账/PG 事件 ${n} 条/滚动重启）"
+
 echo "== helm 幂等（再次 upgrade 应零变更零重启） =="
 before=$("${KCTL[@]}" get pods -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | sort)
 helm upgrade --install airush deploy/charts/airush --kube-context kind-airush-dev \

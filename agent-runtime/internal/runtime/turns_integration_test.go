@@ -6,9 +6,11 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	maspec "github.com/sqlrush/codexgo/pkg/multiagent/spec"
 	"github.com/sqlrush/codexgo/pkg/protocol"
 
 	"github.com/sqlrush/airush/agent-runtime/internal/pgstore"
@@ -383,5 +385,59 @@ func TestInterruptAcrossPods(t *testing.T) {
 	waitStatus(t, ctx, ref.ThreadID, pgstore.ThreadStatusIdle, 10*time.Second)
 	if pending, _ := testStore.PendingInputs(ctx, tid); len(pending) != 0 {
 		t.Fatalf("queue not drained: %+v", pending)
+	}
+}
+
+// TestSubAgentSpawn spec-1.8 T11：模型调用 spawn_agent → 子线程在同一租户下建行（parent_thread_id 指父）、
+// agent_graph_edges 有边、子线程自己的 rollout 也落 PG（session_meta）；父 turn 正常结束。
+func TestSubAgentSpawn(t *testing.T) {
+	ctx, _ := newTenant(t)
+	llmSrv := newFakeLLM(t)
+	spawnTool := protocol.NamespacedToolName(maspec.MultiAgentV1Namespace, "spawn_agent").String()
+	var mu sync.Mutex
+	turnsSeen := 0
+	llmSrv.ToolCallFn = func(n int64, req map[string]any) (name, args string) {
+		mu.Lock()
+		defer mu.Unlock()
+		turnsSeen++
+		// 只有父线程的第一次采样发起 spawn；其余（父的后续采样、子线程）都回普通消息
+		if n == 1 {
+			return spawnTool, `{"message":"分析一下慢查询","agent_type":"default"}`
+		}
+		return "", ""
+	}
+	e, _ := newEngine(t, llmSrv, "pod-a")
+	ref, _ := e.StartThread(ctx, StartThreadInput{})
+	if _, err := e.SubmitTurn(ctx, ref.ThreadID, textInput("请派个子 agent")); err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	waitStatus(t, ctx, ref.ThreadID, pgstore.ThreadStatusIdle, 20*time.Second)
+
+	// 子线程行：parent_thread_id = 父
+	var children []string
+	waitFor(t, 10*time.Second, func() bool {
+		rows, err := testPool.Query(context.Background(), `SELECT id::text FROM agent_threads WHERE parent_thread_id = $1`, ref.ThreadID)
+		if err != nil {
+			return false
+		}
+		defer rows.Close()
+		children = children[:0]
+		for rows.Next() {
+			var id string
+			_ = rows.Scan(&id)
+			children = append(children, id)
+		}
+		return len(children) >= 1
+	})
+	child := protocol.NewThreadID(children[0])
+	kids, err := testStore.Graph().ListThreadSpawnChildren(ctx, protocol.NewThreadID(ref.ThreadID), nil)
+	if err != nil || len(kids) != 1 || kids[0].String() != child.String() {
+		t.Fatalf("graph children = %v (%v), want [%s]", kids, err, child)
+	}
+	waitFor(t, 10*time.Second, func() bool {
+		return contains(eventTypes(t, ctx, child.String()), pgstore.EventTypeSessionMeta)
+	})
+	if !contains(eventTypes(t, ctx, ref.ThreadID), "collab_agent_spawn_end") {
+		t.Fatalf("parent events lack spawn end: %v", eventTypes(t, ctx, ref.ThreadID))
 	}
 }

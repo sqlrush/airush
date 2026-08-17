@@ -35,9 +35,6 @@ func runServer(cfg appConfig, provider *obs.Provider, version string) error {
 		return fmt.Errorf("open store: %w", err)
 	}
 	defer store.Close()
-	if err := store.EnsureEventPartitions(ctx); err != nil {
-		return fmt.Errorf("ensure event partitions: %w", err)
-	}
 
 	mcpManager := startMCP(ctx, cfg, logger)
 	if mcpManager != nil {
@@ -90,13 +87,9 @@ func buildEngine(ctx context.Context, cfg appConfig, store *pgstore.Store, mcpMa
 		return nil, fmt.Errorf("build engine: %w", err)
 	}
 	engine.SetLimiter(scheduler.NewTenantLimiter(cfg.MaxConcurrentTurns))
-	n, err := engine.Recover(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("recover orphan threads: %w", err)
-	}
-	if n > 0 {
-		logger.Info("recovered orphan threads", "count", n)
-	}
+	// 启动期维护（分区预建 + 孤儿恢复）放后台重试：首次安装时 0006 迁移是 post-install hook，
+	// 比本 pod 晚跑；启动时硬失败会让 helm --wait 与迁移互相等（同 console：不以 schema 门就绪）。
+	go runtime.Maintain(ctx, engine, logger)
 	return engine, nil
 }
 

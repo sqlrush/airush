@@ -31,6 +31,10 @@ func (e *Engine) buildServices(ctx context.Context, threadID protocol.ThreadID, 
 	if err := e.ensureThreadRow(ctx, threadID, cfg); err != nil {
 		return core.SessionServices{}, err
 	}
+	if _, isSub := cfg.SessionSource.(rollout.SessionSource); isSub && e.liveFor(threadID) == nil {
+		// core 直接 spawn 的子 agent：runtime 不持有它，起个泵排空事件队列。
+		go e.pumpChild(threadID)
+	}
 	modelClient, err := e.newModelClient(threadID, cfg)
 	if err != nil {
 		return core.SessionServices{}, err
@@ -52,12 +56,22 @@ func (e *Engine) buildServices(ctx context.Context, threadID protocol.ThreadID, 
 
 // ensureThreadRow 给 core 直接 spawn 的线程补建 agent_threads 行（幂等）。
 func (e *Engine) ensureThreadRow(ctx context.Context, threadID protocol.ThreadID, cfg core.SessionConfiguration) error {
+	source := airushSessionSource()
+	parent := cfg.ForkedFromThreadID
+	// 子 agent：multiagent 把子线程的 SessionSource（含父线程 id）放进配置；据此登记 parent_thread_id。
+	if src, ok := cfg.SessionSource.(rollout.SessionSource); ok {
+		source = src
+		if src.SubAgent != nil && src.SubAgent.ThreadSpawn != nil {
+			p := src.SubAgent.ThreadSpawn.ParentThreadID
+			parent = &p
+		}
+	}
 	params := threadstore.CreateThreadParams{
 		SessionID:      threadID.ToSessionID(),
 		ThreadID:       threadID,
-		Source:         airushSessionSource(),
+		Source:         source,
 		HistoryMode:    protocol.ThreadHistoryModePaginated,
-		ParentThreadID: cfg.ForkedFromThreadID,
+		ParentThreadID: parent,
 		Metadata:       threadstore.ThreadPersistenceMetadata{ModelProvider: providerName},
 	}
 	err := e.store.Threads().CreateThread(ctx, params)

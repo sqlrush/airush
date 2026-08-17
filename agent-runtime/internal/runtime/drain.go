@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
 	"github.com/sqlrush/codexgo/pkg/protocol"
@@ -86,3 +87,42 @@ func (e *Engine) Recover(ctx context.Context) (int, error) {
 	}
 	return len(hits), nil
 }
+
+// Maintain 是启动期与周期性维护：事件表分区预建（幂等）+ 一次孤儿恢复扫描。失败只记日志并
+// 短周期重试（首次安装时 0006 迁移是 post-install hook，晚于本 pod；DB 抖动也不该让进程崩），
+// 成功后改为每小时预建下月分区。阻塞到 ctx 结束。
+func Maintain(ctx context.Context, e *Engine, logger *slog.Logger) {
+	if logger == nil {
+		logger = e.logger
+	}
+	recovered := false
+	delay := maintainRetry
+	for {
+		if err := e.store.EnsureEventPartitions(ctx); err != nil {
+			logger.Warn("ensure event partitions failed; will retry", "retry_in", delay, "error", err)
+		} else if !recovered {
+			if n, err := e.Recover(ctx); err != nil {
+				logger.Warn("recover orphan threads failed; will retry", "retry_in", delay, "error", err)
+			} else {
+				recovered = true
+				if n > 0 {
+					logger.Info("recovered orphan threads", "count", n)
+				}
+			}
+		}
+		if recovered {
+			delay = maintainInterval
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(delay):
+		}
+	}
+}
+
+// maintainRetry / maintainInterval 是维护循环的失败重试间隔与稳态周期。
+const (
+	maintainRetry    = 15 * time.Second
+	maintainInterval = time.Hour
+)

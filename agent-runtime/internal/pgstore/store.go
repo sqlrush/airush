@@ -123,5 +123,6 @@ func storeErr(err error, format string, args ...any) error {
 	if ae, ok := apierror.FromError(err); ok && ae.Code == apierror.CodeTenantContextMissing {
 		return err
 	}
-	return threadstore.NewInternalError(err, format, args...)
+	// 把原因拼进 message：threadstore.Error.Error() 只渲染 Message，%w 链上看不到 Cause。
+	return threadstore.NewInternalError(err, format+": %v", append(append([]any{}, args...), err)...)
 }

@@ -112,8 +112,10 @@ type fakeLLM struct {
 	Reply func(n int64, req map[string]any) string
 	// ToolCall 非空 → 第一次请求回一个 function_call（工具名），第二次回消息。
 	ToolCall string
-	mu       sync.Mutex
-	seen     []map[string]any
+	// ToolCallFn 更细的控制：按请求序号决定回哪个工具调用（返回空名 = 回普通消息）。
+	ToolCallFn func(n int64, req map[string]any) (name, args string)
+	mu         sync.Mutex
+	seen       []map[string]any
 	// Hold 阻塞回复直到被关闭（模拟长 turn）。
 	Hold chan struct{}
 }
@@ -164,8 +166,15 @@ func (f *fakeLLM) serve(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	fl, _ := w.(http.Flusher)
 	var item string
-	if f.ToolCall != "" && n == 1 {
-		item = fmt.Sprintf(`{"type":"function_call","name":%q,"call_id":"call-1","arguments":"{\"q\":\"x\"}"}`, f.ToolCall)
+	toolName, toolArgs := "", `{"q":"x"}`
+	if f.ToolCallFn != nil {
+		toolName, toolArgs = f.ToolCallFn(n, req)
+	} else if f.ToolCall != "" && n == 1 {
+		toolName = f.ToolCall
+	}
+	if toolName != "" {
+		argsJSON, _ := json.Marshal(toolArgs)
+		item = fmt.Sprintf(`{"type":"function_call","name":%q,"call_id":"call-%d","arguments":%s}`, toolName, n, argsJSON)
 	} else {
 		text := fmt.Sprintf("mock reply %d", n)
 		if f.Reply != nil {
