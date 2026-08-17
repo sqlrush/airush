@@ -13,10 +13,10 @@
 | core / protocol / api / client | agent 循环、事件协议、模型 API 客户端 | LLM 端点指向 LiteLLM 网关（OpenAI 兼容），去除本地登录态 |
 | mcp | MCP client | 升级 MCP 2026-07-28（同步簇 A）；连接池按 skill endpoint 管理 |
 | multiagent | 并发子 agent 引擎 | 继承 v2 稳定化（同步簇 B）；并发度接租户配额 |
-| threadstore / state / rollout | 会话与状态存储 | **新增 PG 后端实现**（接口已抽象，现有 in_memory/local 双实现为证）；线程模型按同步簇 D 设计（UUID7、分页、fork 语义）；沿用"rollout 为 SSOT、state 可重建"自愈原则 |
-| config（子集） | 配置加载 | 改为平台配置中心/环境变量来源，去除 ~/.codex 本地文件 |
-| modelproviderinfo / modelsmanager | 模型目录 | 精简为网关可用模型目录 |
-| otel | 可观测性 | 对接 spec-0.9 三件套 |
+| threadstore / rollout / agentgraph | 会话与状态存储 | **PG 后端实现已落地**（spec-1.8 D2 `agent-runtime/internal/pgstore`：ThreadStore 31 方法 + AgentGraphStore；通过 codexgo contracttest/agentgraphtest）；线程模型按 0.147（UUID7、分页、fork 语义）；"rollout 为 SSOT、state 可重建"——runtime 进程内只有在飞 turn 的瞬时状态。`state`（SQLite）不带走 |
+| config（子集） | MCP server 配置类型 | 只用 `McpServerConfig` 类型（静态 endpoints 由 `AIRUSH_AGENT_MCP_ENDPOINTS` 环境变量给出）；不读 ~/.codexgo |
+| modelproviderinfo / modelsmanager | 模型目录 | 逻辑名按 `ModelInfoFromSlug` 派生（网关侧路由到真实供应商，目录在 LiteLLM values） |
+| —（otel 不带走） | 可观测性 | 直接用 spec-0.9 `libs/obs`（`airush_agent_*` 指标 + 日志字段 + HTTP 中间件 span） |
 
 ### 1.2 不带走
 
@@ -74,11 +74,11 @@ skill 不在 agent 进程内执行任何命令（AD-3/AD-12）。
 > **2026-08-16 user 定**：codexgo 侧的对齐工作（簇 D 接口/id v7/wait 失败上抛 + core 盘点的 5 块：steer 准入、上下文窗口与压缩、集中审批阶段、客户端健壮性、协议新增）**全部并入 spec-1.8**，在 codexgo 仓的抽核分支 `airush-core` 上按 codexgo 纪律实施（DEVIATIONS 登记），是否合回 codexgo 主线由 codexgo 纪律另行决定。依据：`docs/codexgo-diff-inventory-bcd.md`、`docs/codexgo-diff-inventory-core.md`。原"先在主线完成簇 D 再抽核"的硬前置随之取消；簇 A 已完成（codexgo spec 49，v0.5.0）。
 
 1. ~~codexgo 主线完成同步簇 A（MCP）与簇 D（线程模型）——P0 前置~~ → 簇 A 已完成；簇 D 与 core 对齐并入 1.8 的 D0（codexgo 分支）；
-2. airush 内建 `agent-runtime/` 模块，vendor codexgo 核心包（go.mod replace 指向抽核分支 `airush-core`）；
-3. threadstore PG 后端 + 租户上下文注入（TDD：先写多租户隔离测试）；
-4. 会话调度器 + 服务化入口（HTTP/gRPC）；
-5. LLM 网关对接与 token 预算；
-6. multiagent 并发巡检通路（依赖簇 B）。
+2. ✅ airush 内建 `agent-runtime/` 模块，go.mod replace 指向抽核分支 `airush-core`（`deploy/codexgo.lock` 钉 commit；CI/镜像按 lock 拉取）；
+3. ✅ threadstore PG 后端 + 租户上下文注入（0006 四表 RLS；contracttest + AD-10 四项用例）；
+4. ✅ 会话调度器 + 服务化入口（内部 HTTP/SSE，console 反代公开面）；
+5. ✅ LLM 网关对接（Responses API → `libs/llm.Meter` → LiteLLM，配额门 + 记账）；
+6. ✅ multiagent 通路（PG 图存储 + 执行并发限；spec-1.8 T11 子 agent 用例）——巡检类批量任务的队列化在 spec-1.9+。
 
 ## 4. 修订历史
 
@@ -87,3 +87,4 @@ skill 不在 agent 进程内执行任何命令（AD-3/AD-12）。
 | 2026-08-09 | 初版（AD-11/AD-12 落地设计，同步策略 C 确认后） |
 | 2026-08-09 | 新增 §2.1 会话路由：租户助理 Agent（系统内置、只读、四路定位信号、同会话移交负责 Agent；UI 评审引出，user 定） |
 | 2026-08-16 | §3 修订：codexgo 侧对齐工作（簇 D 接口/id v7/wait 失败上抛 + core 五块）全部并入 spec-1.8（user 定），在 codexgo 抽核分支 `airush-core` 实施；"主线先完成簇 D"硬前置取消。§1.1 带走清单不变，新增按 0.147 吸收的能力见 spec-1.8 §1.1 D0 |
+| 2026-08-17 | spec-1.8 实施完成后按实际落地更新 §1.1（PG 后端已落地、config 只用类型、模型目录按逻辑名派生、otel 换 libs/obs）与 §3（步骤 2–6 全部完成，multiagent 通路以 spec-1.8 T11 子 agent 用例为准）；抽核目标包在 codexgo 侧住 `pkg/`（Go internal 规则） |

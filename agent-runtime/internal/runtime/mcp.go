@@ -32,6 +32,7 @@ func (g *gatedMcpCaller) CallQualifiedTool(ctx context.Context, qualifiedName st
 		Arguments: arguments,
 	}
 	decision := g.engine.approver.Review(ctx, call)
+	observeApproval(ctx, decision.Allowed)
 	g.engine.recordApproval(ctx, g.threadID, call, decision)
 	if !decision.Allowed {
 		return deniedResult(decision), nil

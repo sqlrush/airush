@@ -29,6 +29,9 @@ type liveThread struct {
 	mu      sync.Mutex
 	turn    string
 	running bool
+	// turnStarted 是当前 turn 的开始时刻（指标用）；failed 记本 turn 是否出过 error 事件。
+	turnStarted time.Time
+	failed      bool
 	// steered 记最近一次接纳是 steer（进了运行中的 turn）还是新开 turn。
 	steered bool
 	// holdsSlot 记本线程占着一个租户并发额度（释放时归还）。
@@ -52,11 +55,13 @@ func (l *liveThread) turnRunning() bool {
 	return l.running
 }
 
-func (l *liveThread) setTurn(id string) {
+func (l *liveThread) setTurn(id string, now time.Time) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.turn = id
 	l.running = true
+	l.turnStarted = now
+	l.failed = false
 }
 
 // markAdmission 记录 core 的接纳结果（Started = 新 turn；Steered = 并入运行中的 turn）。
@@ -68,13 +73,20 @@ func (l *liveThread) markAdmission(adm core.UserMessageAdmission) {
 	l.steered = adm.Kind == core.UserMessageAdmissionSteered
 }
 
-// endTurn 标记 turn 结束并唤醒等待者。
-func (l *liveThread) endTurn() {
+// endTurn 标记 turn 结束并唤醒等待者；返回 (开始时刻, 是否出过错)。
+func (l *liveThread) endTurn() (time.Time, bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.running = false
 	close(l.idleCh)
 	l.idleCh = make(chan struct{})
+	return l.turnStarted, l.failed
+}
+
+func (l *liveThread) markFailed() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.failed = true
 }
 
 // startLive 领取后启动线程会话：last_seq==0 → 全新 spawn（写 session_meta），否则按 store 历史
@@ -171,10 +183,13 @@ func (e *Engine) pump(lt *liveThread) {
 		switch ev.Msg.Type {
 		case protocol.EventMsgKindTurnStarted:
 			if ev.Msg.TurnStarted != nil {
-				lt.setTurn(ev.Msg.TurnStarted.TurnID)
+				lt.setTurn(ev.Msg.TurnStarted.TurnID, e.now())
+				observeTurnStart(lt.ctx)
 			}
 		case protocol.EventMsgKindTurnComplete, protocol.EventMsgKindTurnAborted:
-			lt.endTurn()
+			started, failed := lt.endTurn()
+			observeTurnEnd(lt.ctx, turnStatusFor(ev.Msg.Type, failed), started)
+			logger.Info("agent turn ended", "turn_id", lt.turnID(), "status", turnStatusFor(ev.Msg.Type, failed), "duration_ms", time.Since(started).Milliseconds())
 			e.notifier.Notify(lt.id.String())
 			if ev.Msg.Type == protocol.EventMsgKindTurnAborted && e.Draining() {
 				// 排水中止的 turn：线程标 interrupted（可 resume），队列里的输入留给下一任持有者。
@@ -187,6 +202,7 @@ func (e *Engine) pump(lt *liveThread) {
 			e.release(lt, pgstore.ThreadStatusIdle)
 			return
 		case protocol.EventMsgKindError:
+			lt.markFailed()
 			if ev.Msg.Error != nil {
 				logger.Warn("agent turn error", "message", ev.Msg.Error.Message)
 			}
@@ -271,5 +287,17 @@ func (e *Engine) releaseChildren(ctx context.Context, parent protocol.ThreadID) 
 			_ = t.ShutdownAndWait(shutdownCtx)
 			cancel()
 		}
+	}
+}
+
+// turnStatusFor 把 turn 结束事件映射成指标 status。
+func turnStatusFor(kind protocol.EventMsgKind, failed bool) string {
+	switch {
+	case kind == protocol.EventMsgKindTurnAborted:
+		return turnStatusAborted
+	case failed:
+		return turnStatusFailed
+	default:
+		return turnStatusCompleted
 	}
 }

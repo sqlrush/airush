@@ -9,7 +9,7 @@
 
 | # | 可替换点 | 契约（平台拥有） | 当前实现 | 替换动作 | 侵入范围 |
 |---|---|---|---|---|---|
-| R1 | Agent 核心 | 会话调度器 ↔ agent core 之间的 **AgentCore 接口**（Go interface：StartTurn/ResumeThread/Interrupt/Events） | codexgo 抽核 | 实现新适配器（如接 LangGraph 服务） | agent-runtime 内部，外部 API 不变 |
+| R1 | Agent 核心 | 会话调度器 ↔ agent core 之间的 **AgentCore 接口**（Go interface：StartThread/SubmitTurn/Interrupt/Events/ResumeThread；**已落地** `agent-runtime/internal/runtime/core.go`，spec-1.8 D4） | codexgo 抽核（`runtime.Engine`：ThreadManager + pgstore + 审批门） | 实现新适配器（如接 LangGraph 服务），API/调度器/队列/SSE 不动 | agent-runtime 内部，外部 API 不变 |
 | R2 | Skill | **MCP 协议** + 注册表 schema | 各 skill 容器 | 换镜像/换语言重写，注册表 endpoint 一改即可 | 零（协议标准化的直接红利） |
 | R3 | 记忆库 | **记忆服务 HTTP API**（write/search/forget/timeline，平台自定义 OpenAPI） | Graphiti+Neo4j | 记忆服务内换适配器（Mem0/自建），API 不动 | 记忆服务内部 |
 | R4 | 图数据库 | Graphiti 的 GraphDriver 抽象（其原生支持 Neo4j/FalkorDB） | Neo4j | 换 driver 配置 + 数据迁移脚本 | 记忆服务配置层 |

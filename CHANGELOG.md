@@ -8,6 +8,30 @@
 
 ### Added
 
+- Agent Runtime（spec-1.8，AD-11/AD-1/AD-9/AD-10）：智能体框架组第二件——codexgo 抽核服务化：
+  - **codexgo 侧**（抽核分支 `airush-core`，spec 50）：ThreadStore 对齐 0.147（31 方法 +
+    `contracttest`）、id v7、steer 准入、上下文窗口链 + token 预算工具、集中审批阶段、客户端
+    重试/`stream_error`、协议新变体、multiagent 失败上抛与并发限、删 goals；D0.9 缝合（本地执行/
+    本地存储/websocket/keyring 拆到子包，抽核闭包第三方依赖 = uuid + go-toml/v2 + klauspost/compress
+    + uniseg）；抽核目标包移到 `pkg/`；Session 接通 rollout 持久化、submission id UUIDv7、
+    宿主指定新线程 id、事件队列不关闭、子 agent spawn 脱离父 tool 调用取消；
+  - **airush `agent-runtime`**：迁移 0006（`agent_threads` / `agent_rollout_events`（月分区，
+    ≤32KB 内联 + `payload_ref`）/ `agent_thread_queue` / `agent_graph_edges`，全部 RLS 四要素）；
+    `pgstore` = codexgo `ThreadStore` + `AgentGraphStore` 的 PG 实现（事件白名单 = protocol 变体名 +
+    两种审批事件；通过 codexgo contracttest / agentgraphtest 全套）；`runtime.Engine` 实现平台拥有的
+    `AgentCore` 接口（decoupling R1）：会话只在"领取 → 跑完待接纳输入 → 释放"这一段活在进程里，
+    任何 pod 按 rollout 回放接任何线程（AD-1）；外置队列（steer / 排队 / 跨 pod 中断）+ sweeper；
+    每租户并发上限；SSE 事件流按 PG tail（跨 pod）；租户经 `tenantctx` 贯穿 RLS / LLM 网关头 /
+    MCP `_meta`；LLM 走 Responses API → `libs/llm.Meter` → LiteLLM（配额门 + 记账）；
+    **AD-9**：进程内零本地执行，MCP 调用必经审批门（`readOnlyHint` 只读直放，其余一律拒绝并写
+    `approval_requested`/`approval_denied` 事件）；排水（SIGTERM → 停领取 → 等在飞 turn ≤ 300s
+    → 超时 interrupted）+ 启动期孤儿恢复；内部 API `/internal/v1/agent/threads*`（svc token +
+    `X-Airush-Tenant`），console 公开面 `/api/v1/agent/*` 一比一反代（含 SSE）；Helm 组件
+    `agentRuntime`（`terminationGracePeriodSeconds: 330`、PDB、/readyz 排水 503）；镜像构建按
+    `deploy/codexgo.lock` 拉取 codexgo；CI 各 go job 前置 `codexgo-checkout.sh`；
+  - 新错误码 AR_AGENT_THREAD_NOT_FOUND / THREAD_IN_USE / EVENT_UNKNOWN / TURN_REJECTED /
+    ACTION_NEEDS_APPROVAL；`agents.default_model` 列；`airush_agent_*` 指标（turns_total{status}、
+    turn_duration_ms、turns_in_flight、approvals_total{status}）。
 - LLM 网关（spec-1.7，AD-8）：智能体框架组第一件——
   - **LiteLLM 无状态纯路由**（digest 钉版 1.96.2；无 DB、无缓存、无虚拟 key）：Helm 组件
     `llm`（ConfigMap 只放 `os.environ/` 引用，master key 与供应商 key 全部 Secret 注入；管理 UI

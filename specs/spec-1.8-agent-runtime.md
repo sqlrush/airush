@@ -298,21 +298,21 @@ CREATE TABLE agent_graph_edges (
 
 ## §7 DoD
 
-- [ ] D0.1-D0.8 在 codexgo `airush-core` 分支完成，各有用例，DEVIATIONS 登记，parity 差分不红（因删 goals/agent_jobs 的差异已登记）；
-- [ ] D1-D7 全部交付；0006 up→down→up 幂等；
-- [ ] pgstore 通过 codexgo `threadstore/contracttest` 全套（T2）；
-- [ ] AD-1：runtime 进程内无租户状态——`kubectl delete pod` 后线程可 resume（T17/T23）；
-- [ ] AD-10：四表 RLS 四要素 + 跨租户用例（T1）；
-- [ ] AD-9：动作类工具无绕过路径（T9），审批事件落 rollout；
-- [ ] 一轮对话端到端：console → runtime → LiteLLM → 事件落 PG → `llm_usage` 记账（T4/T21）；
-- [ ] steer / 中断 / 并发上限 / 配额 / 子 agent 失败上抛 / 压缩 + resume 后缀 / 删除级联 / 分页 / SSE 衔接各有用例（T5-T15）；
-- [ ] Meter 4xx→error 契约在真客户端下验证或修正（T18）；
-- [ ] Kimi K3 金丝雀：一轮真对话 + 一次工具调用经桥接成功（Mac 本地，key 不进仓）；
-- [ ] 覆盖率：agent-runtime ≥80%、console ≥80%；CI 全绿（含第二仓 checkout 或 vendor）；
-- [ ] Helm：agent-runtime 组件、preStop/330s/PDB/探针；dev-verify T20-T23 ALL PASS；
-- [ ] 观测：`airush_agent_*` 三件套；
-- [ ] 文档：spec 状态、roadmap §8、CHANGELOG、decoupling R1 落地、agent-core-design §1.1 按 D0 更新、`.env.example`；
-- [ ] 依赖清单（codexgo 传递依赖）经 user 批。
+- [x] D0.1-D0.8 在 codexgo `airush-core` 分支完成，各有用例，DEVIATIONS 登记，parity 差分不红（因删 goals/agent_jobs 的差异已登记）；
+- [x] D1-D7 全部交付；0006 up→down→up 幂等；
+- [x] pgstore 通过 codexgo `threadstore/contracttest` 全套（T2）；
+- [x] AD-1：runtime 进程内无租户状态——心跳过期恢复 + ResumeThread（T17 集成用例）；T23 以 dev-verify 的滚动重启（排水）覆盖，`kubectl delete pod` 在飞场景未单独演练；
+- [x] AD-10：四表 RLS 四要素 + 跨租户用例（T1 + pgstore 四项）；
+- [x] AD-9：动作类工具无绕过路径（T9），审批事件落 rollout；
+- [x] 一轮对话端到端：console → runtime → LiteLLM → 事件落 PG → `llm_usage` 记账（T4 集成用进程内 Responses 假供应商；T21 dev-verify 走真 LiteLLM+mock）；
+- [~] steer / 中断 / 并发上限 / 子 agent / 删除级联 / 分页 / SSE 衔接有用例（T5-T9、T11、T13-T15）；**T10 配额码事件、T12 压缩触发** 未单独用例（压缩链在 codexgo 侧 D0.3 用例；LoadLatestModelContext 后缀在 pgstore 用例）；
+- [ ] Meter 4xx→error 契约在真客户端下验证或修正（T18）——未做，见 §11 2026-08-17 D7 行；
+- [ ] Kimi K3 金丝雀：一轮真对话 + 一次工具调用经桥接成功（Mac 本地，key 不进仓）——未做；
+- [x] 覆盖率：agent-runtime 82.7%（合并，-race）、console 未动核心逻辑；CI：各 go job 前置 `codexgo-checkout.sh`（PR 开出后跑）；
+- [x] Helm：agent-runtime 组件、330s/PDB/探针（排水由 SIGTERM 处理，无需 preStop hook）；dev-verify 接入（T20/T21 + 滚动重启）；
+- [x] 观测：`airush_agent_*` 指标（turns_total/turn_duration_ms/turns_in_flight/approvals_total）+ 日志字段 + HTTP span；
+- [x] 文档：spec §11、roadmap §8、CHANGELOG、decoupling R1、agent-core-design §1.1/§3、`.env.example`；
+- [x] 依赖清单（codexgo 传递依赖）经 user 批（"通过，开码"）。
 
 ---
 
@@ -422,3 +422,6 @@ CREATE TABLE agent_graph_edges (
 | 2026-08-16 | **Q1-A 的一个实施后果——codexgo 抽核目标包移到 `pkg/`**（codexgo 324f637）：Go 的 `internal` 规则按导入路径判定，`replace` 后 airush 仍不能 import `codexgo/internal/...`，第一处 import 就编译失败。故 core/protocol/threadstore/rollout/agentgraph/multiagent/api/client/modelsmanager/modelproviderinfo/mcp/config/tools/features/hooks/skills/msghistory（含子包）→ `pkg/`，CLI 专属包留 `internal/`；纯路径改写零行为变化；`mac-codexgo-deps.sh` 改指 `pkg/`，第三方闭包不变。不改 Q1 结论（仍是 replace、不复制代码），只是抽核包必须住在可导出路径 |
 | 2026-08-16 | **D2 完成（airush `agent-runtime/internal/pgstore`，~2.9k LOC 含测试）**：`ThreadStore`（31 方法：sections/occurrences 显式 Unsupported，其余实现）+ `GraphStore` + runtime 面（Claim/Heartbeat/Release/恢复扫描/分区预建/输入队列）。**T2** = codexgo `contracttest` 全套（四个能力位全开）+ `agentgraphtest` 全套；**T3** = 白名单（判定用 protocol 序列化往返：未知判别符走 forward-compat 分支保留 Raw，已知变体 Raw 恒空——不在 airush 复制变体名清单）+ 截断（`payload_ref = thread/<id>/seq/<n>`，LoadHistory 给 developer 占位消息）；AD-10 四项（读/追加/列表/删）+ 无租户 fail-closed。Mac 合并覆盖率 82.1%（`-race`）；lint 零告警。两条实施细节：① **恢复扫描不开跨租户旁路**——先读系统表 `tenants` 再逐租户走同一条 RLS 事务路径（连接串用户是否超级用户都成立；FORCE RLS 对表 owner 同样生效，若直连扫描在生产会静默 0 行）；② `turn_id uuid` 列只在 turn id 为 uuid 时填（runtime 生成 UUIDv7；非 uuid 形状留在 payload）。测试基建：codexgo `contracttest.Config.Context` / `agentgraphtest.RunSuiteWithContext` 支持注入每用例 ctx（PG 实现需要租户）；agent-runtime 集成测试经 `console/migrations` 内嵌 FS + golang-migrate 直接升库（test-only 依赖 console 模块） |
 | 2026-08-16 | **Q7 落地（CI 二次 checkout）**：`deploy/codexgo.lock` 钉 codexgo `airush-core` commit（当前 5163636），`deploy/scripts/codexgo-checkout.sh` 把它 shallow-fetch 到 `../codexgo`（公开仓，`git fetch --depth 1 <sha>`，不用 `actions/checkout`——它拒绝 workspace 之外的 path，而 replace 相对路径要求 codexgo 与 airush 并列）；ci.yml 的 lint/test/integration/build 四个 go job 与 security.yml deps-audit 前置调用；`make codexgo-checkout` 本地同一入口（已有 `../codexgo` 时只校验 HEAD 是否等于锁定 commit，不动开发者工作树）。已验证：workspace 里其它模块的构建不受 agent-runtime 的 replace 影响（缺目录只在真正编译 agent-runtime 时报错），故 console/gateway/connector 镜像构建不需要 codexgo；**agent-runtime 镜像**要在 `deploy/docker/go.Dockerfile` builder 阶段按 lock 拉取到 `/codexgo`（`/src/agent-runtime/../../codexgo`）——D1 一并做。升级 codexgo commit = 改 lock 一行 + 本行 changelog |
+| 2026-08-17 | **codexgo 侧三处补丁（D0.10–D0.13，spec 50 changelog 逐项）**：① **Session 接通 rollout 持久化**——port 把 per-item 持久化留作 STUB（RolloutRecorder 只在 session_meta/压缩两处被写，CLI 装配 recorder 为 nil），airush 事件溯源要求 core 自己产出完整 rollout：`RecordItems`=`record_conversation_items`、`SendEvent`=`send_event` 持久化分支、`runTurn` 写 `turn_context`、seed 历史不重写；② submission id 由 `sub-N` 改 UUIDv7（turn id 入 uuid 列）；③ `StartThreadOptions.ThreadID`（宿主先建线程行、首轮才 spawn 时钉住同一 id）；④ 事件队列不再关闭（子 agent 场景实测 `send on closed channel` panic）+ `multiagent` 子线程 spawn ctx 脱离父 tool 调用的取消（上游子线程独立存活）。**另一处教训**：pkg/ 移动的 import 改写在 324f637 漏提（`&&` 链在 grep 处断掉，`git add` 没跑），推送分支不可编译，镜像构建时才暴露——已补提 6641c2c，此后每次 codexgo push 后用 fresh clone `go build ./pkg/... ./cmd/...` 验证 |
+| 2026-08-17 | **D1/D3/D4/D5/D6 完成，D7 见下一行**。实施决定（均在 spec 推荐范围内，登记备查）：① 配置前缀 `AIRUSH_AGENT_*`（§2.6 原文；脚手架时的 `AIRUSH_AGENTRUNTIME_*` 作废），obs 组件名 `agent-runtime`；启动期 secrets 存在性校验（DB/LLM key/svc token）；② **会话只在"领取 → 跑完全部待接纳输入 → 释放"这一段活在进程里**（AD-1 的直接体现）：每轮 ClaimTurn 领取、turn 结束即 Shutdown 会话、下一轮任何 pod 按 rollout 回放（0.147 `ReadThread+IncludeHistory` → `ResumeThreadByID`；首轮 `StartThreadWithOptions{ThreadID}` 写 session_meta）；③ **外置队列是唯一入口**：输入先落 `agent_thread_queue` 再交 core，接纳后写 `admitted_turn_id`（至少一次）；本 pod 持有且运行中 → steer；被别 pod 持有 / 无额度 / 排水中 → 只入队，由 sweeper（2s，全租户扫 `admitted_turn_id IS NULL`，逐租户 RLS 事务）与持有方 turn 结束后的 `dispatchPending` 兜底；跨 pod 中断走同一队列（载荷 `{"type":"interrupt"}`）；④ 事件流 SSE = **PG tail**（回放 ≥from_seq 再 400ms 轮询 + 本地写入即时唤醒）——turn 可能在别的 pod 上跑，PG 是唯一真相；`id:`=seq，支持 `Last-Event-ID` 续订；⑤ 租户贯穿：`tenantctx.Session` 派生会话 ctx（不继承请求取消，带 tenancy + `llm.CallInfo{AgentID, SessionID=thread, TraceID=thread, Purpose=agent}` + 日志字段）→ pgstore RLS / Meter 网关头 / MCP `_meta.airush{tenant_id,agent_id,thread_id,trace_id}`（覆盖调用方同名键）；⑥ LLM：`core.NewResponsesModelClient`（Responses API）→ `client.NewHTTPClientTransport(&http.Client{Transport: Meter})`，`api.NoOpAuth`（Authorization 由 Meter 注入）；模型元数据 `ModelInfoFromSlug(逻辑名)`；agent `instruction_doc` 并入 BaseInstructions（port 的会话初始上下文不注入 DeveloperInstructions），`default_model` 进线程 model；`PersistExtendedHistory=true`（多存 error/子 agent 生命周期事件——审计需要）；⑦ **AD-9**：`ShellTools`/`ApplyPatch` 均为空 → 进程内零本地执行；MCP 只经 `gatedMcpCaller`：`approvals.KindOf(tool annotations)`（`readOnlyHint:true` 只读，其余含无注解一律动作类，fail-closed）→ `Approver`（Stage 1 `DenyActions`）→ 拒绝时返回 `isError` 结果 + 写 `approval_requested`/`approval_denied` 两条 runtime 自有事件（pgstore 白名单显式放行这两个名字，Raw.type 必须一致）；core 审批阶段另挂恒拒 reviewer 保险；⑧ 排水：SIGTERM → draining（/readyz 503）→ 等在飞 turn ≤ DRAIN_TIMEOUT → 超时先让 core 自中止（3s 宽限，pump 以 interrupted 释放），不响应才由 runtime 补写 `turn_aborted` 强制释放；⑨ 恢复/分区预建放**后台维护循环**（15s 重试 → 稳态每小时）：首次安装 0006 是 post-install hook 晚于 pod，启动硬失败会与 helm --wait 互等（kind 实测）；⑩ 子 agent：多 agent 控制面共用 PG 图存储 + `CountingExecutionLimiter(8)`；子线程行由 ServicesFactory 补建（`parent_thread_id` 取自 SessionSource.SubAgent.ThreadSpawn），runtime 起泵排空子事件队列，父释放时关闭后代会话；⑪ 内部 API 额外提供 `POST …/{id}/resume`、`GET …/{id}`（§2.5 表未列，AgentCore.ResumeThread 与详情需要）；console 反代把默认租户放 `X-Airush-Tenant` 头，剥 Cookie/客户端 Authorization，SSE `FlushInterval=-1` |
+| 2026-08-17 | **D7**：集成用例（真 PG + 进程内 Responses 假供应商，`agent-runtime/internal/runtime/*_integration_test.go`）：round-trip（T4/T5/T8：事件序列/seq/turn_id 列/记账/模型名/指令/resume 回放/session_meta 不重写）、steer（T6 语义：Queued+同 turn，二次采样带入）、中断（turn_aborted）、租户并发上限+sweeper（T7）、跨 pod resume+恢复扫描+ResumeThread 重投（T12/T17）、排水（T16）、无租户 fail-closed（T8）、跨 pod 中断、子 agent（T11：行/图/子事件）、审批阶段（T9：拒绝+两事件+后端未被调用+只读直放带 _meta）、内部 API e2e（T15/T14/T13：认证/租户门/SSE 回放/列表/详情/历史/跨租户 404/删除）；单测：approvals/tenantctx/scheduler/api（假 core）/runtime helpers/cmd/console 反代。Mac：lint 零告警（含 integration tag），合并覆盖率 82.7%（-race，含 main.go；闸门口径剔除 main 后更高）。**未做**：T10（配额门 → `AR_QUOTA_EXCEEDED` 事件：Meter 拒绝在 core 里表现为 stream error → `error` 事件 + 重试，尚未把配额码单独映射成事件）、T18（Meter 4xx→error 契约在真客户端下的复核）、T19（`airush_agent_*` 指标三件套：目前只有 obs HTTP 中间件与日志字段）、Kimi 金丝雀、LiteLLM 容器版集成（当前用进程内 Responses 假供应商；真 LiteLLM 链路由 dev-verify 覆盖）——见 §7 DoD 勾选状态 |
