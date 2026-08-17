@@ -74,11 +74,16 @@ func buildEngine(ctx context.Context, cfg appConfig, store *pgstore.Store, mcpMa
 	}
 	console := llm.NewConsoleClient(cfg.ConsoleURL, cfg.SvcToken)
 	meter := llm.NewMeter(nil, console, console, llm.WithMasterKey(cfg.LLMKey), llm.WithLogger(logger))
+	wire, err := runtime.ParseWireAPI(cfg.LLMWireAPI)
+	if err != nil {
+		return nil, err
+	}
 	engine, err := runtime.New(runtime.Config{
 		Store:        store,
 		DefaultModel: cfg.DefaultModel,
 		LLMBaseURL:   cfg.LLMURL,
 		LLMTransport: meter,
+		LLMWireAPI:   wire,
 		MCP:          mcpGateway,
 		PodName:      podName(),
 		Logger:       logger,

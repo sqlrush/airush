@@ -151,3 +151,30 @@ func TestQuotaAwareTransport(t *testing.T) {
 type rtFunc func(*http.Request) (*http.Response, error)
 
 func (f rtFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestGatewayStatusFor(t *testing.T) {
+	if s, ok := gatewayStatusFor(apierror.New(apierror.CodeQuotaExceeded)); !ok || s != 429 {
+		t.Fatalf("quota → %d %v", s, ok)
+	}
+	if s, ok := gatewayStatusFor(apierror.New(apierror.CodeUpstreamLlmModelUnknown)); !ok || s != 400 {
+		t.Fatalf("model unknown → %d %v", s, ok)
+	}
+	if s, ok := gatewayStatusFor(apierror.Wrap(apierror.CodeUpstreamLlmFailed, errors.New("gateway http 400"))); !ok || s != 400 {
+		t.Fatalf("gateway 400 → %d %v", s, ok)
+	}
+	if _, ok := gatewayStatusFor(apierror.Wrap(apierror.CodeUpstreamLlmFailed, errors.New("gateway http 502"))); ok {
+		t.Fatal("5xx must stay a transport error (retryable)")
+	}
+	if _, ok := gatewayStatusFor(apierror.New(apierror.CodeUpstreamLlmTimeout)); ok {
+		t.Fatal("timeout must stay retryable")
+	}
+	if w, err := ParseWireAPI(""); err != nil || w != WireAPIChat {
+		t.Fatalf("default wire = %s %v", w, err)
+	}
+	if w, err := ParseWireAPI("responses"); err != nil || w != WireAPIResponses {
+		t.Fatalf("responses wire = %s %v", w, err)
+	}
+	if _, err := ParseWireAPI("grpc"); err == nil {
+		t.Fatal("unknown wire accepted")
+	}
+}

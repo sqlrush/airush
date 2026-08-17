@@ -220,6 +220,8 @@ func newEngine(t *testing.T, llmSrv *fakeLLM, pod string, opts ...func(*Config))
 	meter := llm.NewMeter(nil, stubs, stubs, llm.WithMasterKey("test-key"))
 	cfg := Config{
 		Store: testStore, LLMBaseURL: llmSrv.URL(), LLMTransport: meter, PodName: pod,
+		// 进程内假供应商只实现 Responses；chat 线协议的用例用 testkit/mockllm（TestChatWireRoundTrip）。
+		LLMWireAPI:        WireAPIResponses,
 		HeartbeatInterval: 200 * time.Millisecond,
 		Logger:            testLogger(),
 	}
